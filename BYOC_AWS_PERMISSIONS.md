@@ -191,15 +191,6 @@ Arkraft 인프라를 B사 AWS 계정에 이식하기 위해 PM팀(Quantit 서포
       ]
     },
     {
-      "Sid": "AOSSAlphaPoolVectorAndAgentMemory",
-      "Effect": "Allow",
-      "Action": [
-        "aoss:APIAccessAll",
-        "aoss:BatchGetCollection"
-      ],
-      "Resource": "arn:aws:aoss:ap-northeast-2:{ACCOUNT_ID}:collection/*"
-    },
-    {
       "Sid": "BedrockClaudeModelsAllRegionInferenceProfiles",
       "Effect": "Allow",
       "Action": [
@@ -645,8 +636,8 @@ Karpenter v21+ 는 spot interruption notice 처리용 SQS Queue + EventBridge Ru
 | # | IRSA Module | Pod / ServiceAccount | IAM Role 이름 | 핵심 IAM Action | Resource ARN 패턴 | Trust Policy condition |
 |---|------------------------|------------------|---------------|-------------|-------------------|-----------------|
 | 1 | `arkraft_api_server_irsa` | `arkraft:arkraft-api` (narrow 권장) | `arkraft-api-server-role` | s3:* 4 buckets, kms:GenerateDataKey | `arkraft-{prod,staging}, arkraft.quantit.ai, c2-performance-data-production` + KMS alias `alias/arkraft/*` | OIDC StringLike |
-| 2 | `arkraft_agent_irsa` | `arkraft-sandbox:*` | `arkraft-agent-role` | s3:* 2 buckets, aoss:APIAccessAll, bedrock:InvokeModel* | argo-logs, arkraft-production + AOSS collection/* + Bedrock anthropic.* + inference-profile us/eu/ap/global | OIDC StringLike |
-| 3 | `arkraft_agent_staging_irsa` | `arkraft-staging-sandbox:*` | `arkraft-agent-staging-role` | (§2와 동일 — bucket 만 staging) | argo-logs, arkraft-staging + AOSS + Bedrock | OIDC StringLike |
+| 2 | `arkraft_agent_irsa` | `arkraft-sandbox:*` | `arkraft-agent-role` | s3:* 2 buckets, bedrock:InvokeModel* | argo-logs, arkraft-production + Bedrock anthropic.* + inference-profile us/eu/ap/global | OIDC StringLike |
+| 3 | `arkraft_agent_staging_irsa` | `arkraft-staging-sandbox:*` | `arkraft-agent-staging-role` | (§2와 동일 — bucket 만 staging) | argo-logs, arkraft-staging + Bedrock | OIDC StringLike |
 | 4 | `arkraft_agent_manager_irsa` | `arkraft-sandbox:agent-manager` (narrow 권장) | `arkraft-agent-manager-role` | s3:* (1 bucket) | arkraft.quantit.ai* | OIDC StringLike |
 | 5 | `argo_workflows_irsa` | `argo:*` | `argo-workflows-role` | s3:Put/Get/ListObject | ai-infra-argo-workflows-logs/* | OIDC StringLike |
 | 6 | `ebs_csi_irsa` | `kube-system:ebs-csi-controller-sa` | `ai-infra-eks-ebs-csi-driver` | (managed) AmazonEBSCSIDriverPolicy | EBS volumes | OIDC StringLike |
@@ -746,7 +737,7 @@ Karpenter v21+ 는 spot interruption notice 처리용 SQS Queue + EventBridge Ru
 | ALB/NLB | external-gateway (NLB public), internal-gateway (NLB private) | ap-northeast-2 | TLS (ACM) | SG | Istio 인그레스 (arkraft api/web) |
 | Route53 zone | B사 도메인 (예: `arkraft.b사.com`) | global | — | account-bound | 도메인 + ALB DNS record (External-DNS 자동 생성) |
 | ACM cert | wildcard `*.{B사 도메인}` + bare | ap-northeast-2 (ALB region 동일) | (managed) | DNS validation | ALB TLS |
-| **VPC Endpoint (Gateway)** | S3 + DynamoDB | ap-northeast-2 | — | route table 연결 | 비용 무료 (gateway type) — private subnet 에서 S3 비용 절감 |
+| **VPC Endpoint (Gateway)** | S3 만 | ap-northeast-2 | — | route table 연결 | 비용 무료 (gateway type) — private subnet 에서 S3 비용 절감 (DynamoDB 는 alpha-pool 내재화 후 자원 자체 부재) |
 | **VPC Endpoint (Interface)** — 권장 신규 추가 | ECR (api+dkr), Secrets Manager, KMS, STS, CloudWatch Logs | ap-northeast-2 | TLS | VPC SG narrow | NAT egress 비용 절감 + 보안 강화 |
 
 ### 7.7 Security
@@ -988,6 +979,17 @@ Karpenter v21+ 는 spot interruption notice 처리용 SQS Queue + EventBridge Ru
 ---
 
 ## 변경 이력
+
+- **iter 8/9 (2026-04-28, alpha-pool BYOC audit)**: alpha-pool 내재화 (ARK-1518) 후 BYOC 문서 전수 재검증 + arkraft 한정 범위로 강력하게 cleanup. 1505 → ~1018 lines (-487).
+  - **alpha-pool 자원 모두 제거** (이전 §3.14 Lambda alpha-migrator, §7.1 Lambda 행, §7.3 DynamoDB 2개 + AOSS arkraft-alpha-pool-v2, §7.4 EventBridge alpha-migrator, §7.7 Secrets Manager alpha-pool, §10.3 boto3 호출, §10.4 stale "alpha-pool-infra 별도 레포 추정", §3.2 의 stale `AOSSAlphaPoolVectorAndAgentMemory` Statement)
+  - **arkraft 범위 밖 자원 모두 제거** (이전 §3.5 quanda, §3.7 loki, §3.8 agent-sandbox, §3.15 ECS Atlantis, §3.16 EC2 Image Builder, §3.17 SSM Bastion, §3.18 GitHub Actions OIDC, §3.19 quanda Bedrock KB, §7.10 Atlantis, §7.11 Build/CI, §7.12 SSM Bastion, §7.13 WAF, §7.6 VPC Peering / AOSS VPC Endpoint, §1.4 Tier-3 Athena/Glue, §3.1 의 GlueDataCatalogReadOnly Statement, §10.5 EKS Pod Identity Agent self-report)
+  - **§3 numbering 재구성**: 21 → 12 sections (3.1~3.12)
+  - **§5 IRSA 매트릭스**: 11 rows arkraft-relevant only
+  - **§8 Region 변경 영향**: OpenSearch/DynamoDB/Lambda/EventBridge 4행 제거
+  - **§10.1 출처/근거**: stale Atlantis / Loki / DynamoDB / Lambda / AOSS 경로 정리
+  - **§3.1 web 매니저 사이트 (`arkraft.quantit.ai`) 제거** — Quantit 내부, arkraft 범위 밖 (사용자 정정)
+  - **§7.6 VPC Endpoint (Gateway)**: S3 만 (DynamoDB 자원 부재로 endpoint 불필요)
+  - 이하 historical iter 1-7 audit (큰 BYOC 작업) 변경 이력은 audit trail 용으로 보존:
 
 - **iter 1 (2026-04-28)**: 초안 작성. Pass 1 Codebase Forensics 3개 영역 (Terraform IRSA + AWS resource, Helm chart SA mapping, 앱 코드 boto3/aws-sdk import) 모두 반영. 25개 AWS Service 매트릭스, 11개 IRSA Role 매트릭스, 8개 IAM 최소권한 정책 JSON, 9개 ServiceAccount 매핑, 자원 인벤토리 7.1-7.10, Region 변경 영향 17개 항목, 9.1-9.5 Tier 별 신청 체크리스트, 36개 출처 reference 작성.
 - **iter 5 (2026-04-28)**: 5명 reviewer iter 4 발견사항 일괄 처리.
