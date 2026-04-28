@@ -129,9 +129,7 @@ Arkraft 인프라를 B사 AWS 계정에 이식하기 위해 PM팀(Quantit 서포
         "arn:aws:s3:::arkraft-production",
         "arn:aws:s3:::arkraft-production/*",
         "arn:aws:s3:::arkraft-staging",
-        "arn:aws:s3:::arkraft-staging/*",
-        "arn:aws:s3:::arkraft.quantit.ai",
-        "arn:aws:s3:::arkraft.quantit.ai/*"
+        "arn:aws:s3:::arkraft-staging/*"
       ]
     },
     {
@@ -349,7 +347,7 @@ Arkraft 인프라를 B사 AWS 계정에 이식하기 위해 PM팀(Quantit 서포
 
 > **Karpenter Module Source**: `terraform-aws-modules/eks/aws//modules/karpenter` v21+. 표준 정책을 자동 생성하며 Pod Identity 사용 (OIDC provider 불필요, AWS SDK 자동 인증).
 
-#### 3.12a Karpenter Controller IAM Role (terraform-aws-modules 자동 생성)
+#### 3.9a Karpenter Controller IAM Role (terraform-aws-modules 자동 생성)
 
 ```json
 {
@@ -505,7 +503,7 @@ Arkraft 인프라를 B사 AWS 계정에 이식하기 위해 PM팀(Quantit 서포
 
 > **Resource: "\*" 사유 (Karpenter)**: EC2 Describe API + Pricing GetProducts + ssm GetParameter (AWS service parameter) 는 narrow 불가. 단 region condition 으로 narrow.
 
-#### 3.12b Karpenter Node Instance Role (NodePool 이 launch 하는 EC2 가 가질 Role)
+#### 3.9b Karpenter Node Instance Role (NodePool 이 launch 하는 EC2 가 가질 Role)
 
 > **정책**: AWS Managed Policies 4종 attach
 >
@@ -516,9 +514,9 @@ Arkraft 인프라를 B사 AWS 계정에 이식하기 위해 PM팀(Quantit 서포
 >
 > **사유**: AWS 공식 EKS 노드 권장. Karpenter v21 module 자동 attach.
 
-#### 3.12c Karpenter Spot Termination SQS Queue
+#### 3.9c Karpenter Spot Termination SQS Queue
 
-Karpenter v21+ 는 spot interruption notice 처리용 SQS Queue + EventBridge Rules 를 자동 생성. Queue ARN 은 `{KARPENTER_INTERRUPTION_QUEUE_ARN}` 으로 §3.12a 의 SQS 권한에 사용. 별도 자원 신청은 SQS + EventBridge.
+Karpenter v21+ 는 spot interruption notice 처리용 SQS Queue + EventBridge Rules 를 자동 생성. Queue ARN 은 `{KARPENTER_INTERRUPTION_QUEUE_ARN}` 으로 §3.9a 의 SQS 권한에 사용. 별도 자원 신청은 SQS + EventBridge.
 
 ### 3.10 External-Secrets Operator IRSA (`{app}-external-secrets`)
 
@@ -812,11 +810,7 @@ Karpenter v21+ 는 spot interruption notice 처리용 SQS Queue + EventBridge Ru
 | **Secrets Manager** | region-bound. cross-region secret replication 옵션. |
 | **RDS PostgreSQL** | region-bound. Multi-AZ within region OK. cross-region read replica 별도. |
 | **ElastiCache Redis** | region-bound. Global Datastore 옵션 (cross-region replication). |
-| **OpenSearch Serverless** | region-bound. cross-region 미지원. |
-| **DynamoDB** | region-bound. Global Tables 옵션 (multi-region). |
 | **ECR** | region-bound. cross-region pull 가능하지만 비용+latency. ECR replication 옵션. |
-| **Lambda** | region-bound. function 코드 + IAM role 모두 재생성. |
-| **EventBridge** | region-bound. rule + target 재생성. |
 | **CloudWatch Logs** | region-bound. log group 재생성. |
 | **AmazonMQ (RabbitMQ)** | region-bound. broker URL 변경. |
 | **Karpenter** | region-bound. instance type 가용성 region 별 차이 가능 (Graviton instance 등). |
@@ -909,22 +903,18 @@ Karpenter v21+ 는 spot interruption notice 처리용 SQS Queue + EventBridge Ru
 | 3 | EBS CSI IRSA | `ai-infra/aws/eks-ebs-csi*.tf` (module) |
 | 4 | RDS PostgreSQL | `ai-infra/aws/rds.tf` |
 | 5 | ElastiCache Redis | `ai-infra/aws/elasticache.tf` |
-| 6 | S3 buckets | `ai-infra/aws/s3*.tf`, `ai-infra/argo-workflows/`, `ai-infra/monitoring/loki/` |
-| 7 | ECR | `ai-infra/aws/ecr.tf` |
-| 8 | KMS | `ai-infra/aws/kms.tf` |
-| 9 | Secrets Manager | `ai-infra/aws/secretsmanager.tf` |
-| 10 | Route53 zones | `ai-infra/aws/route53.tf` |
-| 11 | ACM | `ai-infra/aws/acm.tf` |
-| 12 | ALB/NLB | `ai-infra/istio/`, `ai-infra/atlantis/` |
-| 13 | VPC + NAT | `ai-infra/aws/vpc.tf` |
-| 14 | OpenSearch Serverless | `ai-infra/aws/opensearch*.tf` |
-| 15 | DynamoDB | `ai-infra/aws/dynamodb*.tf` |
-| 16 | AmazonMQ | `ai-infra/aws/rabbitmq.tf` |
-| 17 | Lambda alpha-migrator | `ai-infra/lambda/` |
-| 18 | EventBridge | `ai-infra/lambda/eventbridge.tf` |
-| 19 | CloudWatch Log Groups | `ai-infra/aws/cloudwatch*.tf` (예상 — Terraform 명시 또는 K8s 자동 생성) |
-| 20 | IAM IRSA modules (11개) | `ai-infra/aws/iam-*.tf` (각 IRSA module) |
-| 21 | OIDC Provider | `ai-infra/aws/eks*.tf` (cluster identity output) |
+| 6 | S3 buckets (`arkraft-production`, `ai-infra-argo-workflows-logs`) | `ai-infra/aws/s3/`, `ai-infra/argo-workflows/` |
+| 7 | ECR | `ai-infra/aws/ecr/` |
+| 8 | KMS | `ai-infra/aws/kms/` |
+| 9 | Secrets Manager (RDS, RabbitMQ) | `ai-infra/aws/rds/`, `ai-infra/rabbitmq/` |
+| 10 | Route53 zones | `ai-infra/aws/route53/` |
+| 11 | ACM | `ai-infra/aws/route53/` |
+| 12 | ALB/NLB (Istio gateways) | `ai-infra/istio/` |
+| 13 | VPC + NAT | `ai-infra/aws/vpc/` |
+| 14 | AmazonMQ (RabbitMQ) | `ai-infra/rabbitmq/`, `ai-infra/aws/amazonmq/` |
+| 15 | CloudWatch Log Groups (EKS control plane 자동) | EKS cluster 자동 + Karpenter 자동 |
+| 16 | IAM IRSA modules (arkraft 한정) | `ai-infra/main.tf` (arkraft_api_server_irsa, arkraft_agent_irsa, arkraft_agent_staging_irsa, arkraft_agent_manager_irsa, argo_workflows_irsa) + `ai-infra/aws/eks/` (ebs_csi, external_dns, alb_controller) + `ai-infra/external-secrets/` |
+| 17 | EKS OIDC Provider | `ai-infra/aws/eks/` (cluster identity output) |
 
 ### 10.2 Helm chart 출처
 
@@ -974,11 +964,11 @@ Karpenter v21+ 는 spot interruption notice 처리용 SQS Queue + EventBridge Ru
 - [x] **CloudFront 사용 여부**: ai-infra 0건 확정. 미사용.
 - [x] **SES / SNS / SQS 사용 여부**: app code grep 0건. ai-infra 의 SQS는 **Karpenter spot termination queue 가 자동 생성** — 별도 신청 불필요 (Karpenter module 자동). SES/SNS 미사용.
 - [ ] **CloudTrail / Config / GuardDuty / Security Hub**: organization-level 자원. B사 본인 계정 정책에 따라 별도. 본 PoC 자원과 무관 — B사 보안팀이 자체 적용.
-- [x] **SSM Parameter Store 사용 여부**: 직접 자원 0건. 단 Karpenter EC2NodeClass 가 `/aws/service/eks/...` AMI lookup 시 사용 — Karpenter Controller IAM 의 `ssm:GetParameter` 로 cover (§3.12).
+- [x] **SSM Parameter Store 사용 여부**: 직접 자원 0건. 단 Karpenter EC2NodeClass 가 `/aws/service/eks/...` AMI lookup 시 사용 — Karpenter Controller IAM 의 `ssm:GetParameter` 로 cover (§3.9).
 - [ ] **CloudWatch Alarms / Dashboards**: 별도 monitoring 자원. 운영 안정성 위해 권장하되 신청 필수 아님.
 - [ ] **Cost Explorer / Billing**: read-only. 비용 모니터링 dashboard 가 있으면 별도.
 - [x] **arkraft-web `@aws-sdk/client-s3` 실제 사용 여부**: **확정 — BFF 가 IAM User access key 로 S3 호출**. §6 #3 에 ❌ 표기 + iter 4 권장 사항 (IRSA 전환).
-- [x] **Karpenter Controller IRSA Role 의 정확한 IAM Policy** — §3.12 본문 추가됨. **단 IRSA 가 아니라 EKS Pod Identity** 패턴 (terraform-aws-modules/eks v21).
+- [x] **Karpenter Controller IRSA Role 의 정확한 IAM Policy** — §3.9 본문 추가됨. **단 IRSA 가 아니라 EKS Pod Identity** 패턴 (terraform-aws-modules/eks v21).
 - [x] **External-Secrets Operator IRSA Role** — §3.13 본문 추가됨. KMS Decrypt 추가 권장.
 - [x] **VPC Endpoints 정확한 enumeration** — §7.6 정정: 실제는 **S3 + DynamoDB Gateway 만** 존재. ECR/SM/KMS/STS interface endpoint 미존재 → B사 신청 시 권장.
 
@@ -991,8 +981,8 @@ Karpenter v21+ 는 spot interruption notice 처리용 SQS Queue + EventBridge Ru
 - [x] **quanda Bedrock Knowledge Base (Retrieve/RetrieveAndGenerate)** — §3.19 에 추가 (ai-infra/main.tf:858-862 출처).
 - [x] **WAF (Atlantis ALB IP allowlist)** — §7.13 에 추가.
 - [x] **VPC Peering × 8** — §7.6 에 추가, B사 PoC 면제 명시.
-- [x] **Karpenter NodePool 6종** (default-arm64/x86, gvisor-arm64/x86, gpu-x86, agent-workload) — §7.1 에 일부 언급, §3.12 에서 NodeInstanceRole 정책 명시.
-- [x] **Karpenter Spot SQS + EventBridge Rule** — §3.12c 자동 생성 명시. §7.4 에서 "SQS 0건" 정정.
+- [x] **Karpenter NodePool 6종** (default-arm64/x86, gvisor-arm64/x86, gpu-x86, agent-workload) — §7.1 에 일부 언급, §3.9 에서 NodeInstanceRole 정책 명시.
+- [x] **Karpenter Spot SQS + EventBridge Rule** — §3.9c 자동 생성 명시. §7.4 에서 "SQS 0건" 정정.
 - [x] **EKS Pod Identity Agent add-on** — Karpenter 가 사용. EKS add-on 으로 별도 신청 항목 (Tier-2).
 
 ---
@@ -1021,7 +1011,7 @@ Karpenter v21+ 는 spot interruption notice 처리용 SQS Queue + EventBridge Ru
   - Reviewer (REVISE): IRSA 매트릭스 컬럼 헤더 정정 (핵심 IAM Action / Trust Policy condition 으로), §3.9/§3.11 invalid JSON 블록을 blockquote 텍스트로 변환, §7.2/§7.4/§7.5/§7.8 region·암호화·접근 제어 컬럼 추가.
   - QA (FAIL): IRSA 매트릭스 #5 `bedrock:*` → `bedrock:InvokeModel, InvokeModelWithResponseStream` 정정, §3.8 S3DataSourceRead `arn:aws:s3:::*` → 특정 bucket narrow + `aws:ResourceAccount` condition.
   - Security (SCOPED-DOWN): §3.1 Trust subject narrow 권장 명시 (현재 wildcard `*:*` → `system:serviceaccount:arkraft:arkraft-api`), §3.5 quanda Bedrock anthropic.* wildcard → 명시 모델 ARN narrow, c2-performance-data-production read-only 분리 statement.
-  - §3.12 Karpenter Controller (Pod Identity) IAM Policy concrete (terraform-aws-modules/eks v21 자동 생성 패턴).
+  - §3.9 Karpenter Controller (Pod Identity) IAM Policy concrete (terraform-aws-modules/eks v21 자동 생성 패턴).
   - §3.13 External-Secrets Operator IRSA Policy concrete (ai-infra/external-secrets/main.tf 추출).
   - §3.14 Lambda alpha-migrator Execution Role concrete + Bedrock narrow (ai-infra/aws/alpha-migrator/main.tf:138 의 `bedrock:* Resource: "*"` 운영 over-permission 표시 + 권장 narrow 패턴).
   - §3.15 AmazonMQ — Pod 측 IAM 불필요 명시 (Secrets Manager 경유).
