@@ -1,8 +1,8 @@
-# BYOC AWS 권한·자원 전수 목록 (B사 PoC 신청용)
+# BYOC AWS 권한·자원 전수 목록 (B사 → PM팀 권한 부여 신청용)
 
-> **목적**: B사가 자체 AWS 계정에 Arkraft 패키지를 똑같이 deploy 하기 위해, 보안팀에 신청해야 할 모든 AWS 자원과 IAM 권한의 전수 목록.
+> **목적**: B사 AWS 계정에 Arkraft 인프라를 이식하기 위해, **B사 보안팀이 PM팀(Quantit + B사 합작 운영팀)에게 부여해야 할 AWS 자원·IAM 권한의 전수 목록**. PM팀이 이 권한을 받으면 Quantit 서포트로 arkraft 인프라 시스템을 B사 AWS 계정에 이식 가능.
 >
-> **컨텍스트**: B사 PoC 패키지 → B사 보안팀 신청서로 그대로 또는 거의 그대로 옮길 수 있는 형태. Quantit AWS 어드민 권한으로 운영 중이라 운영자 본인이 무의식적으로 사용 중인 권한이 누락될 위험을 다층 reviewer (Reviewer / QA / Security / Completeness / AWS-Architect) 로 다섯 번 점검.
+> **컨텍스트**: B사 PoC 패키지 → B사 보안팀이 PM팀(Quantit 서포트 + B사 합작 운영팀)에게 권한 부여 시 사용할 신청서 형태. Quantit AWS 어드민 권한으로 운영 중이라 운영자 본인이 무의식적으로 사용 중인 권한이 누락될 위험을 다층 reviewer (Reviewer / QA / Security / Completeness / AWS-Architect) 로 다섯 번 점검.
 >
 > **Region 정책**: 본 문서는 `ap-northeast-2` (Seoul) 기준. B사 실제 deploy region 이 다를 경우 (B사 본사 위치 NYC → `us-east-1` 가능성) §8 "Region 변경 시 영향" 참고. **Bedrock 은 already cross-region** (`us`, `eu`, `ap`, `global` inference profiles 모두 사용 중) — region 변경 시 검토 우선순위.
 >
@@ -14,7 +14,14 @@
 
 ### 1.1 문서 목적
 
-Arkraft 패키지가 B사 AWS 계정에 가동되기 위해 필요한 IAM Role · IAM Policy · AWS 자원의 전수 목록을 제공한다. B사 보안팀이 이 문서만 보고 자체 AWS 계정에 IAM Role + Resource 를 똑같이 만들 수 있어야 한다.
+Arkraft 인프라를 B사 AWS 계정에 이식하기 위해 PM팀(Quantit 서포트 + B사 합작)이 받아야 할 IAM Role · IAM Policy · AWS 자원의 전수 목록. B사 보안팀이 이 문서를 보고 PM팀에게 적절한 AWS 권한을 부여하면, Quantit가 그 권한으로 arkraft 인프라 시스템을 이식한다.
+
+**역할 분담**:
+- **B사 보안팀**: 본 문서 검토 → PM팀 IAM Principal 에 권한 부여 결정 → 실제 IAM Role/User/SSO 매핑 발급
+- **PM팀** (권한 수령): 본 문서의 IAM Role 들을 자기 또는 자기가 가진 cross-account assume role 로 받아 사용
+- **Quantit (이식 서포트)**: PM팀이 받은 권한으로 Terraform/Helm 적용 + 실제 가동까지 책임
+
+**Trust Policy 주의** (§3 모든 IRSA Trust): 본 문서의 Trust 예시는 **EKS Pod 가 IRSA 로 assume** 하는 패턴 (운영 시나리오). 이식 작업 자체는 PM팀 IAM identity (User / Role / SSO) 가 별도 admin-equivalent 또는 service-별 deploy role 로 수행. **이식용 PM팀 권한과 운영용 Pod IRSA 권한은 분리** (§3 의 IRSA Trust 가 PM팀 identity 가 되면 안 됨).
 
 ### 1.2 신청 우선순위 (Tier 분류)
 
