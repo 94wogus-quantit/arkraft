@@ -13,12 +13,12 @@
 | [`arkraft-agent-alpha`](./arkraft-agent-alpha) | Python 3.14, Claude Agent SDK | Alpha 전략 발굴 에이전트 (6-phase) | `staging` |
 | [`arkraft-agent-insight`](./arkraft-agent-insight) | Python 3.14, Claude Agent SDK | 리서치 가설 에이전트 | `staging` |
 | [`arkraft-agent-portfolio`](./arkraft-agent-portfolio) | Python 3.14, Claude Agent SDK + MCP | 포트폴리오 구성 에이전트 | `staging` |
-| [`arkraft-agent-data`](./arkraft-agent-data) | Python 3.14, Claude Agent SDK | RDS Scan & File Sync 에이전트 | `staging` |
-| [`arkraft-agent-extract`](./arkraft-agent-extract) | Python 3.14, Claude Agent SDK | 데이터 추출 에이전트 | `staging` |
+| [`arkraft-agent-data`](./arkraft-agent-data) | Python 3.14, Claude Agent SDK | CSV/외부 DB → 카탈로그 등록 파이프라인 에이전트 | `staging` |
+| [`arkraft-agent-extract`](./arkraft-agent-extract) | Python 3.14, Pydantic AI | 애널리스트 리포트 추출 에이전트 (정형+서술형 듀얼 출력) | `staging` |
 | [`arkraft-deploy`](./arkraft-deploy) | Helm, ArgoCD, Argo Workflows | K8s 배포 차트 / Argo 템플릿 | `main` |
 | [`ai-infra`](./ai-infra) | Terraform + Atlantis | AWS 인프라 (EKS, RDS, ElastiCache, Istio) | `main` |
-| [`arkraft-sdk`](./arkraft-sdk) | Python | 공통 quant SDK | `main` |
-| [`arkraft-cli`](./arkraft-cli) | — | 운영 CLI 도구 | `main` |
+| [`arkraft-sdk`](./arkraft-sdk) | Python 3.12+, uv, hatchling | Catalog 데이터 액세스 + backtesting SDK | `main` |
+| [`arkraft-cli`](./arkraft-cli) | Python, uv, Typer | ARKRAFT CLI (alpha / data / agent / portfolio) | `main` |
 | [`arkraft-wiki`](./arkraft-wiki) | Markdown + 정적 HTML | 팀 위키 (`arkraft-manager.git`) | `main` |
 
 > 시스템 전체의 데이터 플로우 / 인증 / 외부 의존성은 [`ARCHITECTURE.md`](./ARCHITECTURE.md) 참고.
