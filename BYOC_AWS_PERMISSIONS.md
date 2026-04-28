@@ -1,6 +1,11 @@
 # BYOC AWS 권한·자원 전수 목록 (B사 → PM팀 권한 부여 신청용)
 
-> **목적**: B사 AWS 계정에 Arkraft 인프라를 이식하기 위해, **B사 보안팀이 PM팀(Quantit + B사 합작 운영팀)에게 부여해야 할 AWS 자원·IAM 권한의 전수 목록**. PM팀이 이 권한을 받으면 Quantit 서포트로 arkraft 인프라 시스템을 B사 AWS 계정에 이식 가능.
+> **목적**: B사 AWS 계정에 **Arkraft (한정)** 를 이식하기 위해, B사 보안팀이 PM팀(Quantit + B사 합작 운영팀)에게 부여해야 할 AWS 자원·IAM 권한의 전수 목록. PM팀이 이 권한을 받으면 Quantit 서포트로 arkraft 인프라 시스템을 B사 AWS 계정에 이식 가능.
+>
+> **⚠️ 범위 (arkraft 한정)**:
+> - **포함**: arkraft-api (Backend), arkraft-web (Frontend), arkraft-agent-* (alpha/insight/portfolio/report/extract/data), agent-manager. 이들이 가동되기 위한 필수 AWS 자원 (EKS / RDS / ElastiCache / S3 / ECR / Bedrock / KMS / Secrets Manager / Route53 / ACM / ALB / VPC / NAT / AmazonMQ).
+> - **제외 (Quantit 내부 또는 별도 시스템 — B사 PoC 와 무관)**: Quanda 시스템 (agent-memory AOSS, Bedrock Knowledge Base, quanda-agent IRSA), Atlantis (Quantit Terraform GitOps), WAF (Atlantis ALB 보호 전용), SSM Bastion (Quantit ops 디버깅), EC2 Image Builder (gVisor AMI — Quantit sandbox 용), agent-sandbox + Athena + Glue Data Catalog (Quantit 데이터 탐색), VPC Peering (Quantit 내부 다른 VPC 연결), Loki/Grafana/Prometheus (Quantit 자체 호스팅 observability — B사가 자체 솔루션 사용 권장), GitHub Actions OIDC + CI Role (Quantit CI 시스템 — B사가 자체 CI 사용 시 면제).
+> - 제외 자원은 §3 / §7 에 ~~취소선~~ + "**arkraft 범위 밖**" 표시로 남기되, §9 신청 체크리스트에서는 제외.
 >
 > **컨텍스트**: B사 PoC 패키지 → B사 보안팀이 PM팀(Quantit 서포트 + B사 합작 운영팀)에게 권한 부여 시 사용할 신청서 형태. Quantit AWS 어드민 권한으로 운영 중이라 운영자 본인이 무의식적으로 사용 중인 권한이 누락될 위험을 다층 reviewer (Reviewer / QA / Security / Completeness / AWS-Architect) 로 다섯 번 점검.
 >
@@ -29,8 +34,7 @@ Arkraft 인프라를 B사 AWS 계정에 이식하기 위해 PM팀(Quantit 서포
 |------|------|------|
 | **Tier-1 (필수)** | 미가동 자원, 신청 즉시 시작 | EKS · RDS · ElastiCache · S3 · ECR · Bedrock · KMS · Secrets Manager · Route53 · ACM · ALB/NLB · VPC/Subnet/NAT |
 | **Tier-2 (운영)** | 가동 후 즉시 필요 | Karpenter (EC2) · EBS CSI · ALB Controller · External-DNS · External-Secrets · CloudWatch Logs · Argo Workflows S3 artifact · AmazonMQ (RabbitMQ) |
-| **Tier-3 (선택/모니터링)** | 분석·관측 | OpenSearch Serverless · DynamoDB · Lambda · EventBridge · Athena · Glue |
-| **Tier-별도** | Cognito 미사용 확정 | ai-infra Terraform 0건 + app code grep 0건 (§7.7, §10.4 검증). Arkraft 인증은 다른 메커니즘 (JWT 자체 발급 또는 GitHub OAuth via ArgoCD Dex) |
+| **Tier-별도** | Cognito 미사용 확정 | ai-infra Terraform 0건 + app code grep 0건 (§7.7, §10.4 검증). Arkraft 인증은 다른 메커니즘 (JWT 자체 발급) |
 
 ### 1.3 Region 정책
 
@@ -59,26 +63,23 @@ Arkraft 인프라를 B사 AWS 계정에 이식하기 위해 PM팀(Quantit 서포
 | 3 | **EBS** (CSI) | StatefulSet 볼륨 (RDS/Redis/Argo workdir 등) | Pod 영속 볼륨 (gp3) | region-bound | `ai-infra/aws/eks-ebs-csi*.tf` |
 | 4 | **RDS PostgreSQL** | api server | 메타데이터 DB (사용자, 세션, alpha topic, portfolio, community 등) | region-bound | `ai-infra/aws/rds.tf` |
 | 5 | **ElastiCache Redis** | api + agent-* | 세션 캐시, SSE event 큐, data-query 캐시 (DB 0/2/3 분리) | region-bound | `ai-infra/aws/elasticache.tf` |
-| 6 | **S3** | api + agent-* + Argo + Loki | (8 buckets) 데이터, agent artifact, Argo workflow log, Loki log, 정적 사이트 | region-bound | `ai-infra/aws/s3*.tf` |
-| 7 | **ECR** | CI + EKS pull | 16개 repository (api, web, 6 agents v1+v2, jupyter, worker, agent-manager, quanda) | region-bound | `ai-infra/aws/ecr.tf` |
-| 8 | **Bedrock** | agent-* + (api?) | LLM inference. anthropic.* foundation + cross-region inference profile (`us.`, `eu.`, `ap.`, `global.`) | **cross-region** | `ai-infra/aws/iam-arkraft-agent.tf` |
-| 9 | **KMS** | api + RDS + S3 + Secrets Manager | 데이터 암호화. alias `alias/arkraft/*` | region-bound | `ai-infra/aws/kms.tf` |
-| 10 | **Secrets Manager** | api (RDS creds) + monitoring (Grafana) + Argo (GitHub) + RabbitMQ admin | 7개 secret (RDS, RabbitMQ, Grafana admin/oauth, ArgoCD GitHub app, Argo Workflows) | region-bound | `ai-infra/aws/secretsmanager.tf` |
-| 11 | **Route53** | external-dns | 3개 hosted zone: `arkraft.ai`, `arkraft.io`, `arkraft.trade` + ALB/NLB DNS record 자동 생성 | global | `ai-infra/aws/route53.tf` |
-| 12 | **ACM** | ALB/NLB TLS | 3개 wildcard cert (`*.arkraft.ai/.io/.trade`) | region-bound (ALB 와 동일) | `ai-infra/aws/acm.tf` |
-| 13 | **ELBv2** (ALB/NLB) | Istio ingress + Atlantis | 4개 LB: external-gateway (NLB public), internal-gateway (NLB private), atlantis ALB | region-bound | `ai-infra/istio/`, `ai-infra/atlantis/` |
+| 6 | **S3** | api + agent-* + Argo Workflow artifact | `arkraft-production` (prod data) + `ai-infra-argo-workflows-logs` (agent run artifact) | region-bound | `ai-infra/aws/s3/` |
+| 7 | **ECR** | EKS pull (production deploy 만) | arkraft 서비스 image repository: `ark/arkraft-api`, `ark/arkraft-web`, `ark/arkraft-agent-{alpha,insight,portfolio,report,extract,data}`, `ark/arkraft-agent-manager` | region-bound | `ai-infra/aws/ecr/` |
+| 8 | **Bedrock** | agent-* | LLM inference. anthropic.* foundation + cross-region inference profile (`us.`, `eu.`, `ap.`, `global.`) | **cross-region** | `ai-infra/main.tf` (arkraft_agent_irsa bedrock policy) |
+| 9 | **KMS** | api + RDS + S3 + Secrets Manager | 데이터 암호화. alias `alias/arkraft/*` | region-bound | `ai-infra/aws/kms/` |
+| 10 | **Secrets Manager** | api (RDS creds) + RabbitMQ admin | RDS credentials + RabbitMQ admin (External-Secrets 가 sync) | region-bound | `ai-infra/aws/rds/`, `ai-infra/rabbitmq/` |
+| 11 | **Route53** | external-dns | B사 도메인 hosted zone + ALB/NLB DNS record 자동 생성 | global | `ai-infra/aws/route53/` |
+| 12 | **ACM** | ALB/NLB TLS | wildcard cert | region-bound (ALB 와 동일) | `ai-infra/aws/route53/` |
+| 13 | **ELBv2** (ALB/NLB) | Istio ingress | external-gateway (NLB public), internal-gateway (NLB private) — arkraft api/web 인그레스 | region-bound | `ai-infra/istio/` |
 | 14 | **VPC + NAT + EIP** | network 기반 | VPC, subnet (3 AZ), NAT (private subnet egress), EIP (NAT 용) | region-bound | `ai-infra/aws/vpc.tf` |
 | 15 | **VPC Endpoints** | 비용 절감 | S3, ECR, Secrets Manager, KMS 등 private subnet 통신 | region-bound | `ai-infra/aws/vpc-endpoints.tf` |
 | 16 | **AmazonMQ** (RabbitMQ) | api + agent-* (worker queue) | `m7g.large` (Graviton) multi-AZ. 비동기 작업 큐 | region-bound | `ai-infra/aws/rabbitmq.tf` |
-| 17 | **OpenSearch Serverless** (AOSS) | agent-* + alpha-pool | (1) `agent-memory` SEARCH collection, (2) `arkraft-alpha-pool-v2` VECTORSEARCH | region-bound | `ai-infra/aws/opensearch*.tf` |
-| 18 | **DynamoDB** | alpha-pool | `arkraft-alpha-pool-{prod,staging}-v2` (PITR + Stream NEW_AND_OLD_IMAGES) | region-bound | `ai-infra/aws/dynamodb*.tf` |
-| 19 | **Lambda** | alpha-migrator (scheduled) | Finter → Alpha Pool ETL. EventBridge schedule 으로 trigger | region-bound | `ai-infra/lambda/` |
-| 20 | **EventBridge** | Lambda schedule | alpha-migrator prod/staging cron | region-bound | `ai-infra/lambda/eventbridge.tf` |
-| 21 | **CloudWatch Logs** | EKS control plane + Karpenter + ArgoCD + Argo Workflows + Atlantis + Istio + External-DNS + Loki + Prometheus | 10+ log group | region-bound | `ai-infra/aws/cloudwatch*.tf` |
-| 22 | **Athena + Glue** | agent-sandbox | Pod 안에서 Athena query 실행 (data exploration) | region-bound | `ai-infra/agent-sandbox/` |
-| 23 | **STS** | IRSA AssumeRoleWithWebIdentity | 모든 Pod 의 IAM Role assume mechanism | global | (모든 IRSA module) |
-| 24 | **IAM** | terraform + ArgoCD + Atlantis | Role/Policy/User/OIDC provider 관리. **Cognito 미사용 확정** (ai-infra + app code 모두 0건) | global | `ai-infra/aws/iam*.tf` |
-| 25 | **Glue Data Catalog** | arkraft-api (Describe-only) + agent-sandbox (Athena 와 함께) | Database/Table 메타데이터 조회 (data 스캔 시) | region-bound | arkraft-api/src/.../glue.py (boto3 client) |
+| ~~18~~ | ~~DynamoDB~~ | ~~alpha-pool~~ | **제거됨 (ARK-1518, alpha-pool 내재화)** — `dynamodb_tables = {}` | — | — |
+| ~~19~~ | ~~Lambda alpha-migrator~~ | ~~scheduled ETL~~ | **제거됨 (ARK-1518)** — `aws/alpha-migrator/` 디렉터리 자체 삭제 | — | — |
+| ~~20~~ | ~~EventBridge alpha-migrator~~ | ~~Lambda schedule~~ | **제거됨 (ARK-1518)** — Karpenter spot interruption rule 만 잔존 | — | — |
+| 21 | **CloudWatch Logs** | EKS control plane + Karpenter + Argo Workflows + Istio + External-DNS | EKS / agent run / 인프라 log | region-bound | EKS 자동 + Karpenter 자동 |
+| 22 | **STS** | IRSA AssumeRoleWithWebIdentity | 모든 Pod 의 IAM Role assume mechanism | global | (모든 IRSA module) |
+| 23 | **IAM** | api/agent IRSA + EKS Pod Identity (Karpenter) | Role/Policy/OIDC provider 관리. **Cognito 미사용 확정** | global | `ai-infra/aws/iam/`, `ai-infra/main.tf` |
 
 > **참고**: web chart 는 ServiceAccount 미설정 (default SA 사용) — Pod 내부에서 직접 AWS API 호출 안 하고 BFF 가 api 로 위임하는 패턴. 별도 IRSA 불필요.
 >
@@ -158,31 +159,13 @@ Arkraft 인프라를 B사 AWS 계정에 이식하기 위해 PM팀(Quantit 서포
         }
       }
     },
-    {
-      "Sid": "GlueDataCatalogReadOnly",
-      "Effect": "Allow",
-      "Action": [
-        "glue:GetDatabase",
-        "glue:GetDatabases",
-        "glue:GetTable",
-        "glue:GetTables",
-        "glue:GetPartition",
-        "glue:GetPartitions",
-        "glue:SearchTables"
-      ],
-      "Resource": [
-        "arn:aws:glue:ap-northeast-2:{ACCOUNT_ID}:catalog",
-        "arn:aws:glue:ap-northeast-2:{ACCOUNT_ID}:database/*",
-        "arn:aws:glue:ap-northeast-2:{ACCOUNT_ID}:table/*/*"
-      ]
-    }
   ]
 }
 ```
 
 > **Resource: "\*" 사유 (KMS)**: KMS 의 `kms:RequestAlias` Condition 으로 alias 패턴이 narrow 됨 — 실제 키는 condition 으로 제한. AWS 공식 패턴.
 >
-> **Glue 추가 사유**: arkraft-api 의 boto3 client('glue') 호출 — data 스캔 시 카탈로그 메타데이터 조회만. write 권한 불필요.
+> **Glue Data Catalog 제거 (iter 8)**: 이전 iter 에서 추정으로 추가됐던 `GlueDataCatalogReadOnly` Statement 는 **제거**. arkraft-api/src 에 boto3.client('glue') 호출 0건 확인 (Completeness reviewer 검증). 실제 사용처 없음. 신청 불필요.
 
 ### 3.2 `arkraft-agent-role` (production agent sandbox)
 
@@ -287,63 +270,7 @@ Arkraft 인프라를 B사 AWS 계정에 이식하기 위해 PM팀(Quantit 서포
 }
 ```
 
-### 3.5 `quanda-agent-role`
-
-**현재 운영 Trust**: namespace `*` SA `*` (wildcard — narrow 권장).
-**B사 신청 권장 Trust** (인라인 JSON):
-
-```json
-{
-  "Effect": "Allow",
-  "Principal": { "Federated": "{OIDC_PROVIDER_ARN}" },
-  "Action": "sts:AssumeRoleWithWebIdentity",
-  "Condition": {
-    "StringEquals":  { "{OIDC_ISSUER}:aud": "sts.amazonaws.com" },
-    "StringLike":    { "{OIDC_ISSUER}:sub": "system:serviceaccount:arkraft-sandbox:quanda-*" }
-  }
-}
-```
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "AOSSCollectionAccess",
-      "Effect": "Allow",
-      "Action": ["aoss:APIAccessAll", "aoss:BatchGetCollection"],
-      "Resource": "arn:aws:aoss:ap-northeast-2:{ACCOUNT_ID}:collection/*"
-    },
-    {
-      "Sid": "BedrockClaudeFoundationAndUSInferenceNarrow",
-      "Effect": "Allow",
-      "Action": ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
-      "Resource": [
-        "arn:aws:bedrock:*::foundation-model/anthropic.claude-opus-4-7*",
-        "arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-4-6*",
-        "arn:aws:bedrock:*::foundation-model/anthropic.claude-haiku-4-5*",
-        "arn:aws:bedrock:*:{ACCOUNT_ID}:inference-profile/us.anthropic.claude-*"
-      ]
-    },
-    {
-      "Sid": "S3PublicDataReadWrite",
-      "Effect": "Allow",
-      "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
-      "Resource": "arn:aws:s3:::arkraft.quantit.ai/*"
-    },
-    {
-      "Sid": "S3PublicDataListBucket",
-      "Effect": "Allow",
-      "Action": "s3:ListBucket",
-      "Resource": "arn:aws:s3:::arkraft.quantit.ai"
-    }
-  ]
-}
-```
-
-> **iter 2 fix**: 이전 `bedrock:*` 와 `anthropic.*` wildcard 를 명시적 모델 ARN 으로 narrow. IRSA 매트릭스 §5 #5 행도 동일하게 수정.
-
-### 3.6 `argo-workflows-role`
+### 3.5 `argo-workflows-role`
 
 **Assume**: namespace `argo` SA `*`. Argo Workflows artifact storage.
 
@@ -363,107 +290,8 @@ Arkraft 인프라를 B사 AWS 계정에 이식하기 위해 PM팀(Quantit 서포
 }
 ```
 
-### 3.7 `loki-role`
 
-**Assume**: namespace `monitoring` SA `loki`. Loki S3 backend.
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": ["s3:PutObject", "s3:GetObject", "s3:DeleteObject", "s3:ListBucket", "s3:GetBucketLocation"],
-      "Resource": [
-        "arn:aws:s3:::ai-infra-loki",
-        "arn:aws:s3:::ai-infra-loki/*"
-      ]
-    }
-  ]
-}
-```
-
-### 3.8 `agent-sandbox-pod` (Athena/Glue interactive)
-
-**Assume**: namespace `agent-sandbox` SA `sandbox-runner`. Pod 내부에서 Athena query 실행.
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "AthenaQueryExecutionWorkgroupNarrow",
-      "Effect": "Allow",
-      "Action": [
-        "athena:StartQueryExecution",
-        "athena:GetQueryExecution",
-        "athena:GetQueryResults",
-        "athena:StopQueryExecution"
-      ],
-      "Resource": "arn:aws:athena:ap-northeast-2:{ACCOUNT_ID}:workgroup/primary"
-    },
-    {
-      "Sid": "AthenaListWorkGroupsAccountWide",
-      "Effect": "Allow",
-      "Action": "athena:ListWorkGroups",
-      "Resource": "*",
-      "//comment": "ListWorkGroups API 는 account-wide 만 — narrow 불가."
-    },
-    {
-      "Sid": "GlueCatalogReadNarrow",
-      "Effect": "Allow",
-      "Action": [
-        "glue:GetDatabase",
-        "glue:GetDatabases",
-        "glue:GetTable",
-        "glue:GetTables",
-        "glue:GetPartition",
-        "glue:GetPartitions"
-      ],
-      "Resource": [
-        "arn:aws:glue:ap-northeast-2:{ACCOUNT_ID}:catalog",
-        "arn:aws:glue:ap-northeast-2:{ACCOUNT_ID}:database/*",
-        "arn:aws:glue:ap-northeast-2:{ACCOUNT_ID}:table/*/*"
-      ]
-    },
-    {
-      "Sid": "S3AthenaResultsBucket",
-      "Effect": "Allow",
-      "Action": ["s3:GetObject", "s3:PutObject", "s3:ListBucket", "s3:GetBucketLocation"],
-      "Resource": [
-        "arn:aws:s3:::aws-athena-query-results-*"
-      ]
-    },
-    {
-      "Sid": "S3DataSourceReadScopedForBYOC",
-      "Effect": "Allow",
-      "Action": ["s3:GetObject", "s3:ListBucket"],
-      "Resource": [
-        "arn:aws:s3:::arkraft-production",
-        "arn:aws:s3:::arkraft-production/*",
-        "arn:aws:s3:::arkraft-staging",
-        "arn:aws:s3:::arkraft-staging/*",
-        "arn:aws:s3:::c2-performance-data-production",
-        "arn:aws:s3:::c2-performance-data-production/*"
-      ],
-      "Condition": {
-        "StringEquals": {
-          "aws:ResourceAccount": "{ACCOUNT_ID}"
-        }
-      }
-    }
-  ]
-}
-```
-
-> ⚠️ **iter 2 fix — S3 wildcard 제거**:
-> - **현재 운영 (ai-infra Terraform)**: `arn:aws:s3:::*` 로 account 의 모든 bucket ReadAll 허용 — over-permission.
-> - **B사 신청 권장 (위 JSON)**: agent-sandbox 가 실제로 query 하는 bucket (production/staging/c2-performance-data) 만 narrow + `aws:ResourceAccount` condition 추가.
-> - **사용자 결정 필요**: Athena 쿼리 대상 bucket 이 추후 추가될 가능성. 추가 시 신청서 갱신 권장.
->
-> **Resource: "\*" 사유 (Athena ListWorkGroups)**: AthenaListWorkGroups Statement 만 `Resource: "*"` — ListWorkGroups API 가 account-wide 만 지원 (AWS 자체 제약, narrow 불가). 그 외 AthenaQueryExecution 은 `workgroup/primary` ARN 으로, GlueCatalogRead 는 catalog/database/table ARN 으로 narrow 완료.
-
-### 3.9 `ebs-csi-driver-role` (K8s add-on)
+### 3.6 `ebs-csi-driver-role` (K8s add-on)
 
 **Assume**: namespace `kube-system` SA `ebs-csi-controller-sa`.
 
@@ -471,7 +299,7 @@ Arkraft 인프라를 B사 AWS 계정에 이식하기 위해 PM팀(Quantit 서포
 >
 > **사유**: AWS 공식 EKS add-on. narrow custom policy 사용 시 add-on 업그레이드와 충돌 위험. 권장 정책: managed policy 그대로 attach. 권한 내용 (요약): `ec2:CreateVolume`, `ec2:AttachVolume`, `ec2:DetachVolume`, `ec2:DeleteVolume`, `ec2:CreateSnapshot`, `ec2:DeleteSnapshot`, `ec2:DescribeVolumes`, `ec2:DescribeSnapshots`, `kms:CreateGrant` (encrypted EBS volume 사용 시).
 
-### 3.10 `external-dns-role` (K8s add-on)
+### 3.7 `external-dns-role` (K8s add-on)
 
 **Assume**: namespace `kube-system` SA `external-dns`.
 
@@ -505,7 +333,7 @@ Arkraft 인프라를 B사 AWS 계정에 이식하기 위해 PM팀(Quantit 서포
 
 > **Resource: "\*" 사유 (Route53 List)**: List API 는 account-wide 만 — narrow 불가. ChangeResourceRecordSets 는 정확한 zone ARN 으로 narrow.
 
-### 3.11 `aws-load-balancer-controller-role` (K8s add-on)
+### 3.8 `aws-load-balancer-controller-role` (K8s add-on)
 
 **Assume**: namespace `kube-system` SA `aws-load-balancer-controller`. ALB/NLB 동적 생성.
 
@@ -515,7 +343,7 @@ Arkraft 인프라를 B사 AWS 계정에 이식하기 위해 PM팀(Quantit 서포
 >
 > **Custom narrow 옵션**: Controller 가 생성하는 ALB/NLB 에 `elbv2.k8s.aws/cluster=ai-infra-eks` 태그 강제 + condition `aws:ResourceTag/elbv2.k8s.aws/cluster: ai-infra-eks` 적용 시 일부 destructive action 만 narrow 가능. 보안팀 협의 권장.
 
-### 3.12 Karpenter Controller (Pod Identity, **not** IRSA)
+### 3.9 Karpenter Controller (Pod Identity, **not** IRSA)
 
 **Assume**: namespace `kube-system` SA `karpenter` via **EKS Pod Identity association** (Karpenter v21+ 권장 패턴 — IRSA 가 아님). `arn:aws:iam::aws:policy/AmazonEKSPodIdentityAssociation` 또는 EKS Pod Identity Agent.
 
@@ -692,7 +520,7 @@ Arkraft 인프라를 B사 AWS 계정에 이식하기 위해 PM팀(Quantit 서포
 
 Karpenter v21+ 는 spot interruption notice 처리용 SQS Queue + EventBridge Rules 를 자동 생성. Queue ARN 은 `{KARPENTER_INTERRUPTION_QUEUE_ARN}` 으로 §3.12a 의 SQS 권한에 사용. 별도 자원 신청은 SQS + EventBridge.
 
-### 3.13 External-Secrets Operator IRSA (`{app}-external-secrets`)
+### 3.10 External-Secrets Operator IRSA (`{app}-external-secrets`)
 
 **Assume**: namespace `external-secrets` SA `external-secrets`. **Trust subject narrow 됨** (`system:serviceaccount:external-secrets:external-secrets`).
 
@@ -732,249 +560,7 @@ Karpenter v21+ 는 spot interruption notice 처리용 SQS Queue + EventBridge Ru
 >
 > **B사 적용 시**: prefix `ai-infra` 를 B사가 정의한 prefix 로 변경 (예: `arkraft-byoc/*`).
 
-### 3.14 Lambda alpha-migrator Execution Role (`{app}-alpha-migrator-{env}-role`)
-
-**Assume**: `lambda.amazonaws.com` (IRSA 가 아닌 일반 Lambda Service Role)
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "CloudWatchLogs",
-      "Effect": "Allow",
-      "Action": [
-        "logs:CreateLogGroup",
-        "logs:CreateLogStream",
-        "logs:PutLogEvents"
-      ],
-      "Resource": "arn:aws:logs:ap-northeast-2:{ACCOUNT_ID}:log-group:/aws/lambda/{app}-alpha-migrator-{env}:*"
-    },
-    {
-      "Sid": "DynamoDBSourceTablesReadOnly",
-      "Effect": "Allow",
-      "Action": ["dynamodb:Scan", "dynamodb:Query", "dynamodb:GetItem"],
-      "Resource": [
-        "arn:aws:dynamodb:ap-northeast-2:{ACCOUNT_ID}:table/finter-submission-history",
-        "arn:aws:dynamodb:ap-northeast-2:{ACCOUNT_ID}:table/finter-production-history"
-      ]
-    },
-    {
-      "Sid": "DynamoDBAlphaPoolReadWrite",
-      "Effect": "Allow",
-      "Action": ["dynamodb:Scan", "dynamodb:Query", "dynamodb:GetItem", "dynamodb:PutItem"],
-      "Resource": "arn:aws:dynamodb:ap-northeast-2:{ACCOUNT_ID}:table/arkraft-alpha-pool-{env}-v2"
-    },
-    {
-      "Sid": "S3FinterSourceReadOnly",
-      "Effect": "Allow",
-      "Action": ["s3:GetObject", "s3:ListBucket"],
-      "Resource": [
-        "arn:aws:s3:::c2-performance-data-production",
-        "arn:aws:s3:::c2-performance-data-production/*",
-        "arn:aws:s3:::finter-code",
-        "arn:aws:s3:::finter-code/*"
-      ]
-    },
-    {
-      "Sid": "BedrockClaudeInvokeNarrow",
-      "Effect": "Allow",
-      "Action": "bedrock:InvokeModel",
-      "Resource": [
-        "arn:aws:bedrock:ap-northeast-2::foundation-model/anthropic.claude-sonnet-4-6*",
-        "arn:aws:bedrock:ap-northeast-2:{ACCOUNT_ID}:inference-profile/ap.anthropic.claude-sonnet-4-6*"
-      ]
-    },
-    {
-      "Sid": "VPCNetworkInterfaceForLambdaInVPC",
-      "Effect": "Allow",
-      "Action": [
-        "ec2:CreateNetworkInterface",
-        "ec2:DescribeNetworkInterfaces",
-        "ec2:DeleteNetworkInterface"
-      ],
-      "Resource": "*"
-    },
-    {
-      "Sid": "EventBridgeInvokeLambdaPermission",
-      "Effect": "Allow",
-      "Principal": { "Service": "events.amazonaws.com" },
-      "Action": "lambda:InvokeFunction",
-      "Resource": "arn:aws:lambda:ap-northeast-2:{ACCOUNT_ID}:function:{app}-alpha-migrator-{env}",
-      "Condition": {
-        "ArnLike": {
-          "AWS:SourceArn": "arn:aws:events:ap-northeast-2:{ACCOUNT_ID}:rule/{app}-alpha-migrator-{env}-schedule"
-        }
-      },
-      "//comment": "이는 Lambda Resource-based Policy (aws_lambda_permission Terraform). Execution Role 의 Inline Policy 가 아니라 Lambda function 자체의 policy."
-    },
-    {
-      "Sid": "SecretsManagerNarrow",
-      "Effect": "Allow",
-      "Action": "secretsmanager:GetSecretValue",
-      "Resource": [
-        "arn:aws:secretsmanager:ap-northeast-2:{ACCOUNT_ID}:secret:ai-infra/rds/arkraft-postgres-*",
-        "arn:aws:secretsmanager:ap-northeast-2:{ACCOUNT_ID}:secret:arkraft-alpha-pool/slack-webhook-url-*",
-        "arn:aws:secretsmanager:ap-northeast-2:{ACCOUNT_ID}:secret:ai-infra/alpha-migrator/finter-api-token-*"
-      ]
-    }
-  ]
-}
-```
-
-> **Resource: "\*" 사유 (VPC ENI)**: Lambda-in-VPC 가 ENI 를 동적으로 만들기 때문에 ENI 자원이 사전에 알려지지 않음. AWS 공식 패턴.
->
-> **현재 상태 vs B사 권장**: 운영 코드의 `bedrock:InvokeModel Resource: "*"` 는 over-permission. 위 narrow 버전 권장. (관련: ai-infra/aws/alpha-migrator/main.tf:138 — `Resource = "*"` → narrow 필요)
-
-### 3.15 ECS Fargate / Atlantis — IAM Role
-
-**ECS Task Role**: Atlantis Pod 가 Terraform plan/apply 시 사용. 광범위한 권한 (ai-infra 가 관리하는 모든 자원에 대한 read+write).
-
-> **B사 PoC 적용 권장**: Atlantis 는 GitOps 운영 도구. B사가 자체 GitOps 도입 시 별도 운영 — **PoC 첫 단계에서는 Atlantis 자체를 deploy 안 하고 B사가 자체 Terraform 운영하는 패턴 권장**. 만약 Atlantis 같이 deploy 하려면 별도 IAM 정책 본문 필요 (현 ai-infra 의 Atlantis ECS Task Role 은 거의 admin-equivalent — narrow 매우 어려움).
-
-**ECS Task Execution Role** — **Assume**: `ecs-tasks.amazonaws.com` (ECR pull + CloudWatch Logs write):
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "ECSPullImageFromECR",
-      "Effect": "Allow",
-      "Action": [
-        "ecr:GetAuthorizationToken",
-        "ecr:BatchCheckLayerAvailability",
-        "ecr:GetDownloadUrlForLayer",
-        "ecr:BatchGetImage"
-      ],
-      "Resource": "*"
-    },
-    {
-      "Sid": "ECSCloudWatchLogs",
-      "Effect": "Allow",
-      "Action": [
-        "logs:CreateLogStream",
-        "logs:PutLogEvents"
-      ],
-      "Resource": "arn:aws:logs:ap-northeast-2:{ACCOUNT_ID}:log-group:/ecs/atlantis:*"
-    }
-  ]
-}
-```
-
-> **Resource: "\*" 사유 (ECR)**: GetAuthorizationToken 은 account-wide 만 — narrow 불가.
-
-### 3.16 EC2 Image Builder Service Role (gVisor AMI 빌드)
-
-**Assume**: `imagebuilder.amazonaws.com` (Service Role) + Image Builder 가 launch 하는 빌드 인스턴스의 Instance Profile
-
-> **정책**: AWS Managed Policies 3종 attach:
->
-> - `arn:aws:iam::aws:policy/EC2InstanceProfileForImageBuilder` — Image Builder 빌드 인스턴스 권한
-> - `arn:aws:iam::aws:policy/EC2InstanceProfileForImageBuilderECRContainerBuilds` — ECR 컨테이너 빌드 시 필요
-> - `arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore` — Image Builder 가 SSM Run Command 로 빌드 스텝 실행 (ai-infra/aws/ec2-image-builder/main.tf:65-67)
->
-> **사유**: AWS 공식 EC2 Image Builder 권장 패턴. narrow 어려움.
-
-**B사 적용 옵션**: gVisor 가 필요 없으면 (B사 가 sandbox 격리에 다른 메커니즘 사용 시) Image Builder 자체 미신청 가능 — 표준 EKS AMI (AL2023) 사용. **PoC 첫 단계 권장: gVisor 없이 표준 AMI 로 시작 후 보안 요구에 따라 추가**.
-
-### 3.17 SSM Bastion Instance Profile
-
-**Assume**: `ec2.amazonaws.com` (Instance Profile)
-
-> **정책**: AWS Managed Policy `arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore` 사용.
->
-> **사유**: 운영 디버깅용. RDS/Redis 가 private subnet 에 있어 SSM Session Manager 포트 포워딩 필요. AWS 공식 정책 그대로 attach.
-
-> **B사 적용 옵션**: B사 보안팀이 SSH bastion / VPN 으로 대체 운영 가능. SSM Session Manager 권장 (No SSH key, audit trail).
-
-### 3.18 GitHub Actions CI Role (OIDC)
-
-**Assume**: GitHub Actions OIDC Provider (`token.actions.githubusercontent.com`) — Federated. **Trust subject narrow 필수**: `repo:Quantit-Github/{repo}:ref:refs/heads/{branch}` 또는 `repo:{org}/*` (Org wildcard).
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "ECRPushAccess",
-      "Effect": "Allow",
-      "Action": [
-        "ecr:GetAuthorizationToken",
-        "ecr:BatchCheckLayerAvailability",
-        "ecr:GetDownloadUrlForLayer",
-        "ecr:BatchGetImage",
-        "ecr:InitiateLayerUpload",
-        "ecr:UploadLayerPart",
-        "ecr:CompleteLayerUpload",
-        "ecr:PutImage"
-      ],
-      "Resource": [
-        "arn:aws:ecr:ap-northeast-2:{ACCOUNT_ID}:repository/ark/*",
-        "arn:aws:ecr:ap-northeast-2:{ACCOUNT_ID}:repository/quanda/*",
-        "arn:aws:ecr:ap-northeast-2:{ACCOUNT_ID}:repository/agent-sandbox"
-      ]
-    },
-    {
-      "Sid": "ECRGetAuthorizationTokenAccountWide",
-      "Effect": "Allow",
-      "Action": "ecr:GetAuthorizationToken",
-      "Resource": "*",
-      "//comment": "GetAuthorizationToken API 는 account-wide 만 — narrow 불가. ECR docker login 의 사전 단계."
-    },
-    {
-      "Sid": "ArgoCDSyncTriggerOptional",
-      "Effect": "Allow",
-      "Action": "eks:DescribeCluster",
-      "Resource": "arn:aws:eks:ap-northeast-2:{ACCOUNT_ID}:cluster/ai-infra-eks"
-    }
-  ]
-}
-```
-
-> **Trust Policy (narrow — 권장)**:
-> ```json
-> {
->   "Effect": "Allow",
->   "Principal": { "Federated": "arn:aws:iam::{ACCOUNT_ID}:oidc-provider/token.actions.githubusercontent.com" },
->   "Action": "sts:AssumeRoleWithWebIdentity",
->   "Condition": {
->     "StringEquals": { "token.actions.githubusercontent.com:aud": "sts.amazonaws.com" },
->     "StringLike":   {
->       "token.actions.githubusercontent.com:sub": [
->         "repo:Quantit-Github/arkraft-api:ref:refs/heads/staging",
->         "repo:Quantit-Github/arkraft-api:ref:refs/heads/main",
->         "repo:Quantit-Github/arkraft-web:ref:refs/heads/staging",
->         "repo:Quantit-Github/arkraft-web:ref:refs/heads/main",
->         "repo:Quantit-Github/arkraft-agent-*:ref:refs/heads/staging",
->         "repo:Quantit-Github/arkraft-agent-*:ref:refs/heads/main"
->       ]
->     }
->   }
-> }
-> ```
->
-> **Trust narrow 사유**: 이전 권장 `repo:Quantit-Github/*:*` 는 모든 repo + 모든 ref scope (PR branch 포함) — Pull Request 가 OIDC token 으로 ECR push 가능해지는 보안 위험. 위 narrow 패턴은 `staging`/`main` push 만 허용. 다른 repo 추가 시 explicit allow 필요.
-
-### 3.19 quanda Bedrock Knowledge Base (§3.5 확장)
-
-> **추가 위치**: §3.5 `quanda-agent-role` Statement 배열에 다음 Statement 추가. Assume principal 동일 (별도 Role 아님).
->
-> ai-infra `main.tf:858-862` 에 `bedrock:Retrieve`, `bedrock:RetrieveAndGenerate` 정의 확인됨.
-
-```json
-{
-  "Sid": "BedrockKnowledgeBaseRetrieve",
-  "Effect": "Allow",
-  "Action": [
-    "bedrock:Retrieve",
-    "bedrock:RetrieveAndGenerate"
-  ],
-  "Resource": "arn:aws:bedrock:ap-northeast-2:{ACCOUNT_ID}:knowledge-base/*"
-}
-```
-
-### 3.20 `arkraft-web-server-role` (B사 신청 권장 — 신설)
+### 3.11 `arkraft-web-server-role` (B사 신청 권장 — 신설)
 
 > ⚠️ **현재 운영 (위험)**: web Pod 은 IRSA 미사용. `arkraft-deploy/web/values/production/values.yaml` 에 IAM User long-lived access key (`AKIA*REDACTED*XZG`) + secret key plaintext 노출. 이 IAM User 는 ai-infra Terraform 으로 관리되지 않는 수동 자원. 정책 추적 불가.
 >
@@ -1026,7 +612,7 @@ Karpenter v21+ 는 spot interruption notice 처리용 SQS Queue + EventBridge Ru
 >
 > **Web BFF 의 실제 S3 호출 패턴 재확인 필요** (iter 6): `arkraft-web/src/infra/clients/s3/client.ts` 에서 어떤 메서드 (Get/Put/Delete?) 와 어떤 bucket 사용. 위 정책은 현재 추정 — 실제 호출에 따라 narrow.
 
-### 3.21 AmazonMQ (RabbitMQ) — Pod 측 IAM 권한 불필요
+### 3.12 AmazonMQ (RabbitMQ) — Pod 측 IAM 권한 불필요
 
 > **AmazonMQ 자체 IAM 권한**: 보통 불필요. RabbitMQ 는 AMQP protocol 직접 (TLS) 로 인증하며, Pod 은 Secrets Manager 에서 admin/user credentials 를 받음 (External-Secrets 가 sync). 즉 Pod 에 추가 IAM 정책 불필요 — `arkraft-api-server-role` 의 KMS Decrypt 권한 (External-Secrets 가 sync 한 K8s Secret 사용 시) 또는 직접 Secrets Manager 호출 권한이 있으면 됨.
 >
@@ -1060,17 +646,17 @@ Karpenter v21+ 는 spot interruption notice 처리용 SQS Queue + EventBridge Ru
 
 | # | IRSA Module | Pod / ServiceAccount | IAM Role 이름 | 핵심 IAM Action | Resource ARN 패턴 | Trust Policy condition |
 |---|------------------------|------------------|---------------|-------------|-------------------|-----------------|
-| 1 | `arkraft_api_server_irsa` | `*:*` (wildcard, narrow 권장) | `arkraft-api-server-role` | s3:* 4 buckets, kms:GenerateDataKey | `arkraft-{prod,staging}, arkraft.quantit.ai, c2-performance-data-production` + KMS alias `alias/arkraft/*` | OIDC StringLike |
+| 1 | `arkraft_api_server_irsa` | `arkraft:arkraft-api` (narrow 권장) | `arkraft-api-server-role` | s3:* 4 buckets, kms:GenerateDataKey | `arkraft-{prod,staging}, arkraft.quantit.ai, c2-performance-data-production` + KMS alias `alias/arkraft/*` | OIDC StringLike |
 | 2 | `arkraft_agent_irsa` | `arkraft-sandbox:*` | `arkraft-agent-role` | s3:* 2 buckets, aoss:APIAccessAll, bedrock:InvokeModel* | argo-logs, arkraft-production + AOSS collection/* + Bedrock anthropic.* + inference-profile us/eu/ap/global | OIDC StringLike |
 | 3 | `arkraft_agent_staging_irsa` | `arkraft-staging-sandbox:*` | `arkraft-agent-staging-role` | (§2와 동일 — bucket 만 staging) | argo-logs, arkraft-staging + AOSS + Bedrock | OIDC StringLike |
-| 4 | `arkraft_agent_manager_irsa` | `*:*` (wildcard) | `arkraft-agent-manager-role` | s3:* (1 bucket) | arkraft.quantit.ai* | OIDC StringLike |
-| 5 | `quanda_agent_irsa` | `*:*` (wildcard — narrow 권장) | `quanda-agent-role` | aoss:APIAccessAll, bedrock:InvokeModel, bedrock:InvokeModelWithResponseStream, s3:Get/Put/Delete/ListBucket | AOSS collection/* + Bedrock anthropic.{opus-4-7, sonnet-4-6, haiku-4-5}* + inference-profile us. + arkraft.quantit.ai | OIDC StringLike |
-| 6 | `argo_workflows_irsa` | `argo:*` | `argo-workflows-role` | s3:Put/Get/ListObject | ai-infra-argo-workflows-logs/* | OIDC StringLike |
-| 7 | `loki_irsa` | `monitoring:loki` | `loki-role` | s3:* | ai-infra-loki/* | OIDC StringLike |
-| 8 | `sandbox_irsa` (agent-sandbox) | `agent-sandbox:sandbox-runner` | `agent-sandbox-pod` | athena:*, glue:*, s3:* | aws-athena-query-results-* (narrow), s3::* (broad read — narrow 가능) | OIDC StringLike |
-| 9 | `ebs_csi_irsa` | `kube-system:ebs-csi-controller-sa` | `ai-infra-eks-ebs-csi-driver` | (managed) AmazonEBSCSIDriverPolicy | EBS volumes | OIDC StringLike |
-| 10 | `external_dns_irsa` | `kube-system:external-dns` | `ai-infra-eks-external-dns` | route53:ChangeResourceRecordSets | 3 hosted zone ARN | OIDC StringLike |
-| 11 | `aws_load_balancer_controller_irsa` | `kube-system:aws-load-balancer-controller` | `ai-infra-eks-aws-load-balancer-controller` | (managed) AWSLoadBalancerControllerIAMPolicy | EC2/ELBv2/Cognito/WAF | OIDC StringLike |
+| 4 | `arkraft_agent_manager_irsa` | `arkraft-sandbox:agent-manager` (narrow 권장) | `arkraft-agent-manager-role` | s3:* (1 bucket) | arkraft.quantit.ai* | OIDC StringLike |
+| 5 | `argo_workflows_irsa` | `argo:*` | `argo-workflows-role` | s3:Put/Get/ListObject | ai-infra-argo-workflows-logs/* | OIDC StringLike |
+| 6 | `ebs_csi_irsa` | `kube-system:ebs-csi-controller-sa` | `ai-infra-eks-ebs-csi-driver` | (managed) AmazonEBSCSIDriverPolicy | EBS volumes | OIDC StringLike |
+| 7 | `external_dns_irsa` | `kube-system:external-dns` | `ai-infra-eks-external-dns` | route53:ChangeResourceRecordSets | hosted zone ARN | OIDC StringLike |
+| 8 | `aws_load_balancer_controller_irsa` | `kube-system:aws-load-balancer-controller` | `ai-infra-eks-aws-load-balancer-controller` | (managed) AWSLoadBalancerControllerIAMPolicy | EC2/ELBv2 | OIDC StringLike |
+| 9 | `external_secrets` (Operator) | `external-secrets:external-secrets` | `{app}-external-secrets` | secretsmanager:GetSecretValue/DescribeSecret/ListSecrets + kms:Decrypt | `secret:ai-infra/*` + KMS alias condition | OIDC StringEquals (narrow) |
+| 10 | `karpenter` (Pod Identity, **not** IRSA) | `kube-system:karpenter` | `{app}-karpenter` Controller Role + `{app}-karpenter-node` Node Instance Role | EC2 RunInstances/CreateFleet/Tag, iam:PassRole, sqs:Receive (spot termination) | tag-based scope (`kubernetes.io/cluster/{CLUSTER}: owned` + `karpenter.sh/nodepool: *`) | EKS Pod Identity Association |
+| 11 | `arkraft_web_server_irsa` (B사 신청 권장 신설) | `arkraft:arkraft-web` | `arkraft-web-server-role` | s3:GetObject/ListBucket | `arkraft-production` 만 | OIDC StringEquals |
 
 > **모든 Trust Policy 패턴 동일**: `sts:AssumeRoleWithWebIdentity` + OIDC provider `module.aws.eks_oidc_provider_arn` + `StringLike` condition (token audience + subject match).
 
@@ -1107,24 +693,17 @@ Karpenter v21+ 는 spot interruption notice 처리용 SQS Queue + EventBridge Ru
 
 | 자원 | 식별자 | 사양 | Region | 암호화 | 접근 제어 | 출처 |
 |------|--------|------|--------|--------|-----------|------|
-| EKS Cluster | `ai-infra-eks` | v1.34, public endpoint | ap-northeast-2 | EKS-managed (KMS envelope optional) | aws-auth + RBAC | `ai-infra/aws/eks*.tf` |
-| EC2 (Karpenter) | NodePool 6종 (default-arm64, default-x86, gvisor-arm64, gvisor-x86, gpu-x86, agent-workload) | t/m/c/r/g 시리즈 mix, gp3 EBS, on-demand + spot | region-bound | EBS encrypt | Karpenter Pod Identity (IRSA 가 아님) + Node Instance Role | `ai-infra/karpenter/` |
-| **SSM Bastion EC2** | `aws_instance.ssm_bastion` (single t-series) | gp3 EBS small | ap-northeast-2 | EBS encrypt | IAM Instance Profile (`AmazonSSMManagedInstanceCore`) | `ai-infra/aws/ssm-bastion/` |
-| **EC2 Image Builder Pipeline** | `{app}-gvisor-pipeline` × 1 + image_recipe + infrastructure_configuration | (build-time only) | region-bound | (image artifact) | Image Builder Service Role | `ai-infra/aws/ec2-image-builder/` |
-| Lambda | `ai-infra-alpha-migrator-prod`, `ai-infra-alpha-migrator-staging` | python handler `index.handler`, EventBridge schedule | ap-northeast-2 | (default) | Lambda Execution Role | `ai-infra/lambda/` |
+| EKS Cluster | `ai-infra-eks` | v1.34, public endpoint | ap-northeast-2 | EKS-managed (KMS envelope optional) | aws-auth + RBAC | `ai-infra/aws/eks/` |
+| EC2 (Karpenter) | NodePool (on-demand + spot) | t/m/c/r 시리즈 mix, gp3 EBS, AL2023 표준 AMI 권장 | ap-northeast-2 | EBS encrypt | Karpenter Pod Identity (IRSA 가 아님) + Node Instance Role | `ai-infra/karpenter/` |
 
 ### 7.2 Storage (S3)
 
 | Bucket 이름 | 용도 | Region | 암호화 | 접근 제어 (bucket policy + Public Access Block) | versioning | lifecycle |
 |-------------|------|--------|--------|-------------------------------------|------------|-----------|
-| `arkraft-production` | prod 데이터 | ap-northeast-2 | SSE-S3 (default) | private + IAM only (`arkraft-api-server-role`, `arkraft-agent-role`). CORS: `arkraft.ai` 만 | (확인 필요) | (확인 필요) |
-| `arkraft-staging` | staging 데이터 | ap-northeast-2 | SSE-S3 | private + IAM only. CORS: `staging.arkraft.ai` | — | — |
-| `arkraft.quantit.ai` | static website (manager) | ap-northeast-2 | SSE-S3 | static website (read public) — bucket policy GetObject anyone | — | — |
-| `c2-performance-data-production` | external 성능 데이터 | ap-northeast-2 | (외부 account) | cross-account read-only 위해 별도 bucket policy 필요 (B사 측 IAM Role 을 외부 account 에 등록) | — | — |
-| `ai-infra-argo-workflows-logs` | Argo Workflow artifact + log | ap-northeast-2 | SSE-S3 | private + IAM only (`argo-workflows-role`, `arkraft-agent-role`) | — | TTL 권장 |
-| `ai-infra-loki` | Loki log backend | ap-northeast-2 | SSE-S3 | private + IAM only (`loki-role`) | — | TTL 권장 |
-| `arkraft-wiki` | static website (wiki HTML) | ap-northeast-2 | SSE-S3 | static website 또는 private (CloudFront origin) | — | — |
-| Terraform state | (이 ai-infra 자체 state — 별도 backend bucket) | ap-northeast-2 | SSE-KMS | private + Atlantis IAM Role only. DynamoDB lock table 동반 | enabled | — |
+| `arkraft-production` | arkraft 운영 데이터 (api / 6 agents 의 결과물 저장) | ap-northeast-2 | SSE-S3 (default) | private + IAM only (`arkraft-api-server-role`, `arkraft-agent-role`). CORS: B사 도메인 | enabled 권장 | TTL 권장 |
+| `arkraft-staging` | staging 데이터 (선택 — 동일 패턴) | ap-northeast-2 | SSE-S3 | private + IAM only | — | — |
+| `ai-infra-argo-workflows-logs` | Argo Workflow artifact (agent run 결과) | ap-northeast-2 | SSE-S3 | private + IAM only (`argo-workflows-role`, `arkraft-agent-role`) | — | TTL 권장 |
+| Terraform state (B사 GitOps 사용 시) | B사 측 backend bucket (B사 자체 정의) | ap-northeast-2 | SSE-KMS | private + B사 deploy IAM Role only. DynamoDB lock table 동반 | enabled | — |
 
 > **B사 신청 시**: 위 이름 그대로 만들거나 prefix 변경. IAM Resource ARN 도 같이 바꿔야 함.
 
@@ -1133,22 +712,17 @@ Karpenter v21+ 는 spot interruption notice 처리용 SQS Queue + EventBridge Ru
 | 자원 | 식별자 | Engine / 사양 | Multi-AZ | Backup | 암호화 | Region | 접근 제어 |
 |------|--------|--------------|----------|--------|--------|--------|-----------|
 | RDS | `arkraft-postgres` | PostgreSQL 17.2, db.t4g.medium, 20GB → 100GB max | false (PoC 권장 true) | 2d retention, deletion_protection=true | KMS | ap-northeast-2 | private subnet + SG (VPC CIDR 5432) |
-| ElastiCache | `arkraft-redis` | Redis 7.1, cache.t4g.micro, single node, maxmemory=noeviction | false | 1d snapshot | TLS+KMS (확인 필요) | ap-northeast-2 | private subnet + SG (VPC CIDR 6379) |
-| OpenSearch Serverless | `agent-memory` | SEARCH, standby=ENABLED | (managed) | (managed) | KMS | ap-northeast-2 | AOSS data access policy + IRSA principal_arns |
-| OpenSearch Serverless | `arkraft-alpha-pool-v2` | VECTORSEARCH, standby=ENABLED | (managed) | (managed) | KMS | ap-northeast-2 | AOSS data access policy + IRSA principal_arns |
-| DynamoDB | `arkraft-alpha-pool-prod-v2` | hash_key=identity_name, PITR=true, **Stream=NEW_AND_OLD_IMAGES** | (managed) | PITR | KMS | ap-northeast-2 | IAM only |
-| DynamoDB | `arkraft-alpha-pool-staging-v2` | hash_key=identity_name, PITR=false | (managed) | — | KMS | ap-northeast-2 | IAM only |
+| ElastiCache | `arkraft-redis` | Redis 7.1, cache.t4g.micro, single node, maxmemory=noeviction | false | 1d snapshot | TLS+KMS | ap-northeast-2 | private subnet + SG (VPC CIDR 6379) |
 
-> **DynamoDB Streams 주의 (alpha-pool-infra 별도 레포)**: prod table 의 `NEW_AND_OLD_IMAGES` Stream 활성화. **현재 ai-infra 안에는 stream consumer 가 없음** (`aws_lambda_event_source_mapping`, `aws_kinesis_stream` 등 0건). consumer 가 있다면 별도 레포 (`alpha-pool-infra`) 또는 외부 시스템에서 Stream 구독. **B사 환경에서 stream consumer 가 정의되지 않으면 stream 자체는 활성화돼도 동작 영향 없음** (cost 만 약간 발생).
+> **alpha-pool 내재화 (ARK-1518)**: 외부 데이터 파이프라인 (Finter → Lambda alpha-migrator → DynamoDB → AOSS VECTORSEARCH) 이 모두 제거됨. agent (alpha) 가 직접 데이터를 in-house 처리하는 메커니즘으로 전환. arkraft 데이터 영속성은 RDS PostgreSQL + ElastiCache Redis + S3 (`arkraft-production`) 만 사용.
 
 ### 7.4 Messaging / Eventing
 
 | 자원 | 이름 | Region | 암호화 | 접근 제어 | 용도 |
 |------|------|--------|--------|-----------|------|
-| AmazonMQ (RabbitMQ) | `ai-infra-rabbitmq` | ap-northeast-2 | TLS in-transit + (관리자 KMS optional) | VPC private subnet only + Secrets Manager 발급 admin credential (External-Secrets 가 sync) | api/agent worker queue. mq.m7g.large (Graviton), 3.13, multi-AZ |
-| EventBridge Rule | `alpha-migrator-prod-schedule`, `staging-schedule` + Karpenter spot interruption rules | ap-northeast-2 | (managed) | Lambda/Karpenter target | Lambda 시간 기반 trigger + Karpenter 노드 spot 회수 알림 |
-| **SQS** | **`{app}-karpenter` (Karpenter spot interruption queue, terraform-aws-modules/eks 자동 생성)** | ap-northeast-2 | KMS optional | Karpenter Pod Identity 만 receive | Spot 인스턴스 회수 통보 처리 |
-| SNS | (현재 0건) | — | — | — | — |
+| AmazonMQ (RabbitMQ) | `ai-infra-rabbitmq` | ap-northeast-2 | TLS in-transit + KMS | VPC private subnet only + Secrets Manager admin credential (External-Secrets 가 K8s Secret 으로 sync) | api/agent worker queue. mq.m7g.large (Graviton), 3.13, multi-AZ |
+| EventBridge Rule | Karpenter spot interruption rules (자동 생성) | ap-northeast-2 | (managed) | Karpenter target | Karpenter 노드 spot 회수 알림 |
+| **SQS** | `{app}-karpenter` (Karpenter spot interruption queue, terraform-aws-modules/eks 자동 생성) | ap-northeast-2 | KMS optional | Karpenter Pod Identity 만 receive | Spot 인스턴스 회수 통보 처리 |
 
 ### 7.5 AI/ML — Bedrock
 
@@ -1171,29 +745,22 @@ Karpenter v21+ 는 spot interruption notice 처리용 SQS Queue + EventBridge Ru
 | Private Subnet (workload /20) × 3 | per AZ | ap-northeast-2 | — | private (NAT egress only) | Karpenter (Prefix Delegation 위해 /20 이상 필수) |
 | NAT Gateway | (×3 또는 single) | ap-northeast-2 | — | EIP attach | private subnet egress |
 | EIP | (NAT용) | ap-northeast-2 | — | NAT 전용 | — |
-| ALB/NLB | external-gateway (NLB public), internal-gateway (NLB private), atlantis (ALB) | ap-northeast-2 | TLS (ACM) | SG + WAF (Atlantis 만) | Istio + Atlantis 인그레스 |
-| Route53 zone | arkraft.ai, arkraft.io, arkraft.trade | global | — | account-bound | 도메인 + ALB DNS record |
-| ACM cert | wildcard *.arkraft.{ai,io,trade} + bare | ap-northeast-2 (ALB region 동일) | (managed) | DNS validation | ALB TLS |
-| **VPC Endpoint (Gateway)** | S3 + DynamoDB | ap-northeast-2 | — | route table 연결 | 비용 무료 (gateway type) — private subnet 에서 S3/DynamoDB 비용 절감 |
-| **VPC Endpoint (Interface)** | (현재 운영 ai-infra: 0건) | — | — | (권장: VPC SG narrow) | **B사 신청 시 권장**: ECR (api+dkr), Secrets Manager, KMS, STS, CloudWatch Logs interface |
-| **AOSS VPC Endpoint** | `aws_opensearchserverless_vpc_endpoint` | ap-northeast-2 | TLS | private subnet only | Pod 이 AOSS 호출 시 VPC private routing — 미존재 시 public endpoint fallback (보안 issue) |
-| **VPC Peering × 8** | to_dip_k8s_prod/staging, to_finter_grafana, to_finter_labs_prod, to_invest_signal_prod/staging, to_quantit_dev/production, to_vaquum | ap-northeast-2 | (N/A) | route table | Quantit 내부 only — **B사 PoC 면제** |
+| ALB/NLB | external-gateway (NLB public), internal-gateway (NLB private) | ap-northeast-2 | TLS (ACM) | SG | Istio 인그레스 (arkraft api/web) |
+| Route53 zone | B사 도메인 (예: `arkraft.b사.com`) | global | — | account-bound | 도메인 + ALB DNS record (External-DNS 자동 생성) |
+| ACM cert | wildcard `*.{B사 도메인}` + bare | ap-northeast-2 (ALB region 동일) | (managed) | DNS validation | ALB TLS |
+| **VPC Endpoint (Gateway)** | S3 + DynamoDB | ap-northeast-2 | — | route table 연결 | 비용 무료 (gateway type) — private subnet 에서 S3 비용 절감 |
+| **VPC Endpoint (Interface)** — 권장 신규 추가 | ECR (api+dkr), Secrets Manager, KMS, STS, CloudWatch Logs | ap-northeast-2 | TLS | VPC SG narrow | NAT egress 비용 절감 + 보안 강화 |
 
 ### 7.7 Security
 
 | 자원 | 식별자 | Region | 암호화 | 접근 제어 | 사유 |
 |------|--------|--------|--------|-----------|------|
-| KMS Key | `alias/arkraft/data-source-credentials` | ap-northeast-2 | (CMK 자체) | key policy + alias condition | API key/token 암호화 (외부 DB credentials) |
+| KMS Key | `alias/arkraft/data-source-credentials` | ap-northeast-2 | (CMK 자체) | key policy + alias condition | arkraft api 가 외부 DB credentials 암호화 시 사용 |
 | KMS Key (default AWS managed) | `alias/aws/{rds,s3,ebs,secretsmanager}` | ap-northeast-2 | (CMK 자체) | account-bound default | 별도 CMK 미사용 자원 |
-| Secrets Manager | `ai-infra/rds/arkraft-postgres` | ap-northeast-2 | KMS default | IAM only | RDS credentials |
-| Secrets Manager | `ai-infra/rabbitmq/admin` | ap-northeast-2 | KMS default | IAM only | RabbitMQ admin |
-| Secrets Manager | `ai-infra/grafana/admin-password`, `ai-infra/grafana/github-oauth` | ap-northeast-2 | KMS default | IAM only | Grafana |
-| Secrets Manager | `argocd/github-app-deploy-bot` | ap-northeast-2 | KMS default | IAM only | ArgoCD GitHub App |
-| Secrets Manager | `ai-infra/argo-workflows/*` | ap-northeast-2 | KMS default | IAM only | Argo Workflows secrets |
-| Secrets Manager | `arkraft-alpha-pool/slack-webhook-url-*`, `ai-infra/alpha-migrator/finter-api-token-*` | ap-northeast-2 | KMS default | IAM only | Lambda alpha-migrator |
-| **Cognito** | **미사용 확정** (ai-infra Terraform 0건 + app code grep 0건) | — | — | — | Arkraft 인증은 다른 메커니즘 (JWT 자체 발급 또는 GitHub OAuth via ArgoCD Dex) |
+| Secrets Manager | `ai-infra/rds/arkraft-postgres` (또는 B사 prefix) | ap-northeast-2 | KMS default | IAM only (External-Secrets sync) | RDS credentials |
+| Secrets Manager | `ai-infra/rabbitmq/{user}` (또는 B사 prefix) | ap-northeast-2 | KMS default | IAM only | RabbitMQ broker user credentials (per-service) |
+| **Cognito** | **미사용 확정** (ai-infra Terraform 0건 + app code grep 0건) | — | — | — | Arkraft 인증은 다른 메커니즘 (JWT 자체 발급) |
 | IAM OIDC Provider (EKS) | EKS cluster OIDC | global | — | thumbprint pinned | IRSA Trust |
-| **IAM OIDC Provider (GitHub Actions)** | `token.actions.githubusercontent.com` (별도 자원) | global | — | thumbprint pinned + Trust subject narrow | CI Workflow OIDC AssumeRole |
 | **EKS Pod Identity Agent add-on** | `aws_eks_addon` type `eks-pod-identity-agent` | ap-northeast-2 | — | EKS managed | Karpenter Pod Identity Association 동작에 필요 (v21+) |
 | **EKS Access Entries / Roles** | `aws_eks_access_entry` + `aws_eks_access_policy_association` | ap-northeast-2 | — | account IAM Role/User → EKS RBAC | kubectl / Console 접근 (Role-based 권장) |
 
@@ -1201,9 +768,7 @@ Karpenter v21+ 는 spot interruption notice 처리용 SQS Queue + EventBridge Ru
 
 | Repository | Region | 암호화 | 접근 제어 (push / pull) | 사용 |
 |-----------|--------|--------|--------------------------|------|
-| `quanda/agent` | ap-northeast-2 | AES256 (default) | push: GitHub Actions OIDC IAM / pull: EKS NodeInstanceRole | quanda agent (legacy) |
-| `agent-sandbox` | ap-northeast-2 | AES256 | push/pull 동일 패턴 | agent-sandbox runtime |
-| `ark/arkraft-api` | ap-northeast-2 | AES256 | (동일) | api server |
+| `ark/arkraft-api` | ap-northeast-2 | AES256 (default) | push: B사 CI / pull: EKS NodeInstanceRole | api server |
 | `ark/arkraft-web` | ap-northeast-2 | AES256 | (동일) | web frontend |
 | `ark/arkraft-agent-alpha` | ap-northeast-2 | AES256 | (동일) | alpha agent |
 | `ark/arkraft-agent-insight` | ap-northeast-2 | AES256 | (동일) | insight agent |
@@ -1211,53 +776,25 @@ Karpenter v21+ 는 spot interruption notice 처리용 SQS Queue + EventBridge Ru
 | `ark/arkraft-agent-report` | ap-northeast-2 | AES256 | (동일) | report agent |
 | `ark/arkraft-agent-extract` | ap-northeast-2 | AES256 | (동일) | extract agent |
 | `ark/arkraft-agent-data` | ap-northeast-2 | AES256 | (동일) | data agent |
-| `ark/arkraft-jupyter` | ap-northeast-2 | AES256 | (동일) | jupyter (agent dev) |
-| `ark/arkraft-worker` | ap-northeast-2 | AES256 | (동일) | worker |
 | `ark/arkraft-agent-manager` | ap-northeast-2 | AES256 | (동일) | agent manager |
-| `ark/arkraft-agent-*v2` (각 v2) | ap-northeast-2 | AES256 | (동일) | (마이그레이션 중) |
 
-> 모든 repo: `image_scanning_configuration.scan_on_push=true`, `lifecycle_policy.max_image_count=30`. Repository Policy 는 default (private + 동일 account IAM only). Push side IAM Role 은 GitHub Actions OIDC (별도 — §3 에 미포함, B사 deploy 시 자체 CI Role 정의).
+> 모든 repo: `image_scanning_configuration.scan_on_push=true`, `lifecycle_policy.max_image_count=30`. Repository Policy 는 default (private + 동일 account IAM only). Push side IAM Role 은 B사 자체 CI 시스템 (GitHub Actions / GitLab CI / Jenkins 등) 에서 별도 정의.
 
 ### 7.9 Observability
 
 | 자원 | 이름 | 사유 |
 |------|------|------|
-| CloudWatch Log Group | `/aws/eks/ai-infra-eks/cluster` | EKS control plane log |
-| CloudWatch Log Group | `/aws/lambda/ai-infra-alpha-migrator-*` | Lambda log |
-| CloudWatch Log Group | `prometheus`, `loki`, `istio`, `argocd`, `argo-workflows`, `atlantis`, `karpenter`, `external-dns` | 10+ 자체 호스팅 컴포넌트 log |
-| Loki (S3 backend `ai-infra-loki`) | `loki-role` IRSA | self-hosted aggregation |
-| Prometheus (in-cluster) | (없음 — IAM 권한 불필요) | — |
-| Grafana | Secrets Manager 에서 admin/oauth 받음 | — |
+| CloudWatch Log Group | `/aws/eks/{cluster}/cluster` | EKS control plane log |
+| CloudWatch Log Group | Karpenter / Argo Workflows / External-DNS / ALB Controller (in-cluster Helm chart 가 기본 stdout 로 출력 — CloudWatch agent 활성화 시 별도 group) | 인프라 컴포넌트 log |
+
+> **Loki / Grafana / Prometheus**: B사 자체 observability 솔루션 사용 권장. arkraft 자체에는 self-hosted 없음 (B사 PoC 신청 불필요).
 
 ### 7.10 GitOps / Workflow
 
 | 자원 | 이름 | 호스팅 | 사유 |
 |------|------|--------|------|
-| ArgoCD | (in-cluster) | EKS pod (ops node group) | GitHub App 으로 repo access. AWS 권한 별도 필요 X (EKS 내부 동작) |
-| Argo Workflows | (in-cluster) + S3 artifact bucket `ai-infra-argo-workflows-logs` | EKS pod | agent run 의 artifact 저장 |
-| **Atlantis (ECS Fargate)** | `aws_ecs_cluster.atlantis`, `aws_ecs_service`, `aws_ecs_task_definition` (ARK-599: EKS → ECS Fargate 마이그레이션) | **ECS Fargate** + Istio ServiceEntry | Terraform PR 자동 plan/apply. GitHub webhook. **EKS 노드 업데이트 시 Atlantis 중단 방지 위해 ECS 로 분리.** 자체 IAM Role (ECS Task Role + Execution Role) 필요. |
-
-### 7.11 Build / CI
-
-| 자원 | 이름 | Region | 암호화 | 접근 제어 | 사유 |
-|------|------|--------|--------|-----------|------|
-| **EC2 Image Builder** | `aws_imagebuilder_image_pipeline` × 1 + component, distribution_configuration, image_recipe, infrastructure_configuration | ap-northeast-2 | (managed) | Service Role 만 | gVisor AMI 빌드 (custom EKS AMI for sandbox) |
-| **GitHub Actions OIDC Provider** | `aws_iam_openid_connect_provider` (EKS OIDC 와 별개) | global | — | thumbprint pinned | CI Workflow → OIDC AssumeRole → ECR push |
-| **GitHub Actions CI Role** | `{app}-github-actions-ci` (또는 유사) | global | — | Trust subject narrow (repo + branch) | ECR push, ArgoCD sync trigger |
-
-### 7.12 Diagnostics / Operations
-
-| 자원 | 이름 | Region | 암호화 | 접근 제어 | 사유 |
-|------|------|--------|--------|-----------|------|
-| **SSM Bastion EC2** | `aws_instance.ssm_bastion` (single t-series) + IAM Instance Profile | ap-northeast-2 | EBS encrypt | private subnet + SSM Session Manager only | RDS/Redis 디버깅용 |
-| **SSM Parameter Store** | (직접 자원 0, AWS public parameter `/aws/service/eks/...` lookup) | ap-northeast-2 | (managed) | account-wide read | Karpenter EC2NodeClass AMI 자동 lookup |
-
-### 7.13 보안 (추가)
-
-| 자원 | 이름 | Region | 암호화 | 접근 제어 | 사유 |
-|------|------|--------|--------|-----------|------|
-| **WAFv2 Web ACL** | `aws_wafv2_web_acl.atlantis` | ap-northeast-2 | (managed) | Atlantis ALB associate | Atlantis ALB 보호 (IP allowlist) |
-| **WAFv2 IP Set × 2** | IPv4 + IPv6 allowlist | ap-northeast-2 | — | 사내 VPN IP 만 | Atlantis 접근 제한 |
+| Argo Workflows | (in-cluster) + S3 artifact bucket `ai-infra-argo-workflows-logs` | EKS pod | arkraft agent run 의 artifact 저장. arkraft agent 6종 (alpha/insight/portfolio/report/extract/data) 가 WorkflowTemplate 으로 동작. |
+| ArgoCD (선택) | (in-cluster) | EKS pod | B사가 GitOps 에 ArgoCD 사용 시. 또는 다른 GitOps 솔루션 사용 가능. AWS 권한 별도 필요 X (EKS 내부 동작) |
 
 ---
 
@@ -1294,92 +831,68 @@ Karpenter v21+ 는 spot interruption notice 처리용 SQS Queue + EventBridge Ru
 
 > 보안팀이 항목별 ack 체크 가능한 markdown checkbox 형태.
 
-### 9.1 Tier-1 (필수, 미가동)
+### 9.1 Tier-1 (arkraft 가동에 필수)
 
 #### 컴퓨트
 - [ ] EKS Cluster 생성 권한 + control plane IAM Role
-- [ ] EKS NodeGroup 또는 Karpenter NodePool (EC2 RunInstances 등)
+- [ ] Karpenter NodePool (EC2 RunInstances 등 — Pod Identity 패턴, terraform-aws-modules/eks v21 표준)
 
 #### 네트워크
-- [ ] VPC + 6 Subnet (public×3 / private×3)
+- [ ] VPC + 6 Subnet (public×3 / private×3 — workload `/20`+ for Karpenter Prefix Delegation)
 - [ ] Internet Gateway + NAT Gateway × 1-3 + EIP × 1-3
-- [ ] Security Group 다수 (ALB, EKS pod, RDS, Redis, MQ)
-- [ ] Route53 Hosted Zone (B사 도메인) — global
-- [ ] ACM Certificate (wildcard, B사 region 과 동일)
-- [ ] ALB/NLB × 4 (external-gateway, internal-gateway, atlantis, etc.)
+- [ ] Security Group (ALB, EKS pod, RDS, Redis, RabbitMQ)
+- [ ] Route53 Hosted Zone (B사 도메인)
+- [ ] ACM Certificate (wildcard, ALB region 동일)
+- [ ] ALB/NLB × 2 (external-gateway public, internal-gateway private — Istio 인그레스)
 
 #### 데이터
-- [ ] S3 Bucket × 8 (production, staging, argo-logs, loki, manager, wiki, terraform-state, athena-results)
+- [ ] S3 Bucket × 2-3: `arkraft-production` (필수), `arkraft-staging` (선택), `ai-infra-argo-workflows-logs` (Argo agent run artifact)
 - [ ] RDS PostgreSQL 17.x (db.t4g.medium 권장) — Multi-AZ for prod
 - [ ] ElastiCache Redis 7.x (cache.t4g.micro 또는 .medium)
-- [ ] OpenSearch Serverless × 2 collection (search + vectorsearch)
-- [ ] DynamoDB × 2 table (alpha-pool prod/staging) — PITR 권장 prod
 
 #### AI/ML
 - [ ] Bedrock Model Access — `anthropic.claude-opus-4-7`, `anthropic.claude-sonnet-4-6`, `anthropic.claude-haiku-4-5` (foundation + inference profile)
 
 #### 컨테이너
-- [ ] ECR Repository × 14 (api, web, 6 agents v1, jupyter, worker, agent-manager, quanda, sandbox 등) — image scan + lifecycle 권장
+- [ ] ECR Repository × 9: `ark/arkraft-api`, `ark/arkraft-web`, `ark/arkraft-agent-{alpha,insight,portfolio,report,extract,data}`, `ark/arkraft-agent-manager` — image scan + lifecycle 권장
 
 #### 보안
-- [ ] KMS Key × 1+ (alias `alias/{prefix}/data-source-credentials` + RDS/S3/EBS 별도 키 가능)
-- [ ] Secrets Manager × 7+ (RDS, RabbitMQ, Grafana×2, ArgoCD GitHub, Argo Workflows×2)
+- [ ] KMS Key × 1+ (alias `alias/{prefix}/data-source-credentials` + 자동 RDS/S3/EBS default 사용)
+- [ ] Secrets Manager × 2+ (RDS credentials, RabbitMQ credentials per-service)
 
 #### 메시징
 - [ ] AmazonMQ (RabbitMQ) — `mq.m7g.large` Graviton, 3.13, multi-AZ
 
-### 9.2 Tier-2 (운영, K8s add-on + 인프라 운영 도구)
+### 9.2 Tier-2 (운영, K8s add-on)
 
-- [ ] EBS CSI driver IRSA + IAM Role (`AmazonEBSCSIDriverPolicy` 또는 narrow)
-- [ ] AWS Load Balancer Controller IRSA + IAM Role (`AWSLoadBalancerControllerIAMPolicy` 또는 tag-based narrow)
-- [ ] External-DNS IRSA + IAM Role (Route53 ChangeResourceRecordSets, narrow zone ARN)
-- [ ] **Karpenter Pod Identity (NOT IRSA)** + IAM Role (terraform-aws-modules/eks v21 표준, EC2 RunInstances/CreateLaunchTemplate/TerminateInstances, iam:PassRole 로 NodeInstanceRole, ssm:GetParameter for AMI lookup, sqs Receive for spot termination)
-- [ ] Karpenter NodeInstanceRole `arkraft-karpenter-node` (`AmazonEKSWorkerNodePolicy`, `AmazonEKS_CNI_Policy`, `AmazonEC2ContainerRegistryReadOnly`, `AmazonSSMManagedInstanceCore`)
-- [ ] **Karpenter Spot Interruption SQS Queue** (`{app}-karpenter`) + EventBridge Rules — terraform-aws-modules/eks 자동 생성
-- [ ] **EKS Pod Identity Agent add-on** — Karpenter 의 Pod Identity Association 동작에 필요. EKS add-on 으로 install (`aws_eks_addon` resource type `eks-pod-identity-agent`).
-- [ ] External-Secrets Operator IRSA + IAM Role (Secrets Manager GetSecretValue, KMS Decrypt, narrow secret ARN `ai-infra/*` prefix)
-- [ ] Loki IRSA + IAM Role (S3 read/write/delete on `ai-infra-loki/*`)
+- [ ] EBS CSI driver IRSA + IAM Role (`AmazonEBSCSIDriverPolicy`)
+- [ ] AWS Load Balancer Controller IRSA + IAM Role (AWS 공식 정책 또는 tag-based narrow)
+- [ ] External-DNS IRSA + IAM Role (Route53 ChangeResourceRecordSets, zone ARN narrow)
+- [ ] **Karpenter Pod Identity** (terraform-aws-modules/eks v21 표준 정책) + Node Instance Role (`{app}-karpenter-node`: AmazonEKSWorkerNodePolicy + EKS_CNI_Policy + ECR ReadOnly + SSM ManagedInstanceCore)
+- [ ] **EKS Pod Identity Agent add-on** (`aws_eks_addon` type `eks-pod-identity-agent`) — Karpenter 동작 필수
+- [ ] **Karpenter Spot Interruption SQS Queue + EventBridge Rules** — terraform-aws-modules/eks 자동 생성
+- [ ] External-Secrets Operator IRSA + IAM Role (Secrets Manager GetSecretValue + DescribeSecret + ListSecrets, KMS Decrypt narrow `alias/arkraft/*`)
 - [ ] Argo Workflows controller IRSA + IAM Role (S3 artifact bucket)
-- [ ] CloudWatch Logs (PutLogEvents, CreateLogStream, DescribeLogGroups — VPC Flow Log, EKS audit log 등)
-- [ ] **VPC Endpoints — 현재 운영**: S3 + DynamoDB Gateway 만. **권장 확장**: ECR API/DKR, Secrets Manager, KMS, STS, CloudWatch Logs Interface (NAT egress 비용 절감)
-- [ ] **AOSS VPC Endpoint** (`aws_opensearchserverless_vpc_endpoint`) — agent Pod 의 OpenSearch Serverless private 통신
-- [ ] **arkraft-web-server-role IRSA (§3.20 신설 권장)** — web Pod 의 IAM User access key 폐기 + IRSA 전환 (B사 PoC 보안 권장 사항)
-- [ ] **DynamoDB Streams 주의** — alpha-pool prod table 의 Stream NEW_AND_OLD_IMAGES 활성. consumer 가 ai-infra 외부 (alpha-pool-infra 별도 레포 추정) — B사 환경에선 미존재 시 cost 만 약간 발생, 동작 영향 없음
-- [ ] **AmazonMQ (RabbitMQ)** — `mq.m7g.large` Graviton, multi-AZ, 3.13. 자체 IAM 불필요 (Secrets Manager 경유 admin credentials)
-- [ ] **WAFv2 web ACL + IPv4/IPv6 IP set** — Atlantis ALB IP allowlist 보호 (B사 가 Atlantis 운영 시만 — PoC 미적용 권장)
-- [ ] **EC2 Image Builder** (gVisor AMI) — Pipeline + Component + Distribution + Recipe + Infrastructure Configuration. **B사 가 gVisor 미사용 시 면제 가능**.
-- [ ] **SSM Bastion EC2** + Instance Profile (`AmazonSSMManagedInstanceCore`) — RDS/Redis 디버깅용. **B사 가 다른 bastion 패턴 사용 시 면제 가능**.
-- [ ] **GitHub Actions OIDC Provider** + CI Role — ECR push 권한. Trust subject narrow 필수 (repo + branch 명시).
-- [ ] **EKS Access Entries / Access Roles** — `aws_eks_access_entry` + `aws_eks_access_policy_association` Role-based EKS access (kubectl/Console). 사용자/팀 단위 narrow.
+- [ ] **arkraft-web-server-role IRSA (§3.11 신설 권장)** — web Pod 의 IAM User access key 폐기 + IRSA 전환 (보안 강화)
+- [ ] CloudWatch Logs (EKS control plane 자동 + agent run log)
+- [ ] **VPC Endpoints (Interface)** — ECR API/DKR + Secrets Manager + KMS + STS + CloudWatch Logs (NAT egress 비용 절감 + 보안 강화). 현재는 S3 + DynamoDB Gateway 만 정의됨.
+- [ ] **EKS Access Entries / Access Roles** — `aws_eks_access_entry` + `aws_eks_access_policy_association` Role-based EKS access (kubectl/Console)
 
-### 9.2a Tier-2 운영 도구 (선택)
-
-- [ ] **Atlantis (ECS Fargate)** — Terraform GitOps. ECS Cluster + Service + Task Definition + Task Role (admin-equivalent — narrow 어려움) + Execution Role. **B사 자체 Terraform 운영 시 면제 권장**.
-
-### 9.3 Tier-3 (선택)
-
-- [ ] Lambda × 2 (alpha-migrator) + Execution Role (CloudWatch + DynamoDB + AOSS + Secrets Manager)
-- [ ] EventBridge Rule × 2 (Lambda schedule)
-- [ ] Athena (workgroup + IRSA permission for sandbox pod)
-- [ ] Glue Catalog (Athena 가 사용)
-- [ ] CloudFront (CDN — 필요 시)
-
-### 9.4 Region 별 추가 신청 (us-east-1 deploy 시)
+### 9.3 Region 별 추가 신청 (us-east-1 deploy 시)
 
 - [ ] Bedrock 모델 us-east-1 가용성 재확인 — Claude Opus 4.7 / Sonnet 4.6 / Haiku 4.5 모두 활성화
 - [ ] inference profile 패턴 `us.anthropic.*`, `global.anthropic.*` 호출 권한
 - [ ] KMS multi-region key 또는 us-east-1 별도 key
 - [ ] ACM certificate us-east-1 발급
-- [ ] CloudFront (필요시 — global edge cache, us-east-1 강제)
 
-### 9.5 IAM Trust Policy narrow 요청
+### 9.4 IAM Trust Policy narrow 요청
 
 > ⚠️ **현재 ai-infra 의 일부 IRSA Trust Policy 가 namespace/SA wildcard `*:*` 사용**. B사 보안팀 신청 시 narrow 권장:
 
 - [ ] `arkraft-api-server-role` Trust → `system:serviceaccount:arkraft:arkraft-api`
-- [ ] `arkraft-agent-manager-role` Trust → 정확한 namespace 명시
-- [ ] `quanda-agent-role` Trust → 정확한 namespace 명시
+- [ ] `arkraft-agent-manager-role` Trust → `system:serviceaccount:arkraft-sandbox:agent-manager`
 - [ ] `arkraft-agent-role` Trust → `system:serviceaccount:arkraft-sandbox:*` (namespace 까진 narrow)
+- [ ] `arkraft-agent-staging-role` Trust → `system:serviceaccount:arkraft-staging-sandbox:*`
 
 ---
 
@@ -1456,7 +969,7 @@ Karpenter v21+ 는 spot interruption notice 처리용 SQS Queue + EventBridge Ru
 ### 10.4 검증 누락 가능성 (다음 iter 에서 보강)
 
 - [x] **Cognito 미사용 확인**: arkraft-api/web 모두 `cognito-idp` boto3 호출 0건. ai-infra 도 자원 0건. Arkraft 인증은 다른 메커니즘 사용.
-- [ ] **alpha-pool-infra 별도 레포**: 12 submodule 에 미포함이지만 alpha-pool DynamoDB/AOSS 가 ai-infra 에 있는 것으로 보아 ai-infra 가 자원 prov, alpha-pool-infra 가 ETL/Lambda 처리 가능성. 별도 확인 (alpha-pool-infra 레포 access 시).
+- [x] **alpha-pool-infra 별도 레포 — 사실 정정**: ARK-1518 (`Quantit-Github/ai-infra` PR #225 등 4 PR, 2026-04 머지) 으로 alpha-pool 외부 데이터 파이프라인 자원 (Lambda alpha-migrator, alpha-pool-indexer, DynamoDB tables, OpenSearch VECTORSEARCH collection, alpha-pool 관련 Secrets Manager) **모두 제거**. alpha-pool-infra 별도 레포는 더이상 사용 안 함. agent (alpha) 가 직접 데이터를 처리하는 in-house 메커니즘으로 전환 — **이것이 "alpha-pool 내재화" 의 의미**.
 - [x] **WAF 사용 여부**: 이전 iter "0건" 으로 잘못 보고. 실제는 `aws/waf/` 모듈 존재 — Atlantis ALB IP allowlist (WAFv2 web ACL + IP set IPv4/IPv6). §7.13 에 추가됨.
 - [x] **CloudFront 사용 여부**: ai-infra 0건 확정. 미사용.
 - [x] **SES / SNS / SQS 사용 여부**: app code grep 0건. ai-infra 의 SQS는 **Karpenter spot termination queue 가 자동 생성** — 별도 신청 불필요 (Karpenter module 자동). SES/SNS 미사용.
