@@ -1,0 +1,48 @@
+[submodule "ai-infra"]
+	path = ai-infra
+	url = git@github.com:Quantit-Github/ai-infra.git
+	branch = main
+[submodule "arkraft-agent-alpha"]
+	path = arkraft-agent-alpha
+	url = git@github.com:Quantit-Github/arkraft-agent-alpha.git
+	branch = staging
+[submodule "arkraft-agent-data"]
+	path = arkraft-agent-data
+	url = git@github.com:Quantit-Github/arkraft-agent-data.git
+	branch = staging
+[submodule "arkraft-agent-extract"]
+	path = arkraft-agent-extract
+	url = git@github.com:Quantit-Github/arkraft-agent-extract.git
+	branch = staging
+[submodule "arkraft-agent-insight"]
+	path = arkraft-agent-insight
+	url = git@github.com:Quantit-Github/arkraft-agent-insight.git
+	branch = staging
+[submodule "arkraft-agent-portfolio"]
+	path = arkraft-agent-portfolio
+	url = git@github.com:Quantit-Github/arkraft-agent-portfolio.git
+	branch = staging
+[submodule "arkraft-api"]
+	path = arkraft-api
+	url = git@github.com:Quantit-Github/arkraft-api.git
+	branch = staging
+[submodule "arkraft-cli"]
+	path = arkraft-cli
+	url = git@github.com:Quantit-Github/arkraft-cli
+	branch = main
+[submodule "arkraft-deploy"]
+	path = arkraft-deploy
+	url = git@github.com:Quantit-Github/arkraft-deploy.git
+	branch = main
+[submodule "arkraft-sdk"]
+	path = arkraft-sdk
+	url = git@github.com:Quantit-Github/arkraft-sdk.git
+	branch = main
+[submodule "arkraft-web"]
+	path = arkraft-web
+	url = git@github.com:Quantit-Github/arkraft-web.git
+	branch = staging
+[submodule "arkraft-wiki"]
+	path = arkraft-wiki
+	url = git@github.com:Quantit-Github/arkraft-manager.git
+	branch = main
