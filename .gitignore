@@ -1,0 +1,22 @@
+# macOS
+.DS_Store
+
+# Editor / IDE
+.vscode/
+
+# Local archives (legacy reports / plans / experiments)
+.archive
+.archive/
+
+# Ralph Loop run state (ephemeral)
+.ralph
+.ralph/
+
+# Claude Code per-machine state
+.claude/settings.local.json
+.claude/ralph-loop.local.md
+
+# Python / Node common (rare at meta-repo level — sub-repos own their own)
+__pycache__/
+*.py[cod]
+node_modules/
