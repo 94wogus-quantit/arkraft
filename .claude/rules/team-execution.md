@@ -43,7 +43,7 @@
 | `frontend` | `arkraft-web` | `arkraft-deploy` (web charts) |
 | `backend` | `arkraft-api` | `arkraft-deploy` (api charts) |
 | `harness` | 전 레포 순회 (프로토콜/인터페이스/배포만) | `arkraft-deploy` (agent charts, Argo templates) |
-| `agent-dev` | `arkraft-agent-alpha`, `arkraft-agent-insight`, `arkraft-agent-portfolio`, `arkraft-agent-report` | — |
+| `agent-dev` | `arkraft-agent-alpha`, `arkraft-agent-insight`, `arkraft-agent-portfolio`, `arkraft-agent-extract`, `arkraft-agent-data` | — |
 | `infra` | `ai-infra`, `alpha-pool-infra` | - |
 | `designer` | `arkraft-web` (`shared/` 중심) | — |
 
