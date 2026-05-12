@@ -34,6 +34,10 @@
 	path = arkraft-deploy
 	url = git@github.com:Quantit-Github/arkraft-deploy.git
 	branch = main
+[submodule "arkraft-jupyter"]
+	path = arkraft-jupyter
+	url = git@github.com:Quantit-Github/arkraft-jupyter.git
+	branch = staging
 [submodule "arkraft-sdk"]
 	path = arkraft-sdk
 	url = git@github.com:Quantit-Github/arkraft-sdk.git
